@@ -13,15 +13,19 @@ for (const p of envCandidates) {
 loadDotenv({ override: false }); // also try CWD .env (dev / docker-compose)
 
 // ── 2. Build DATABASE_URL from individual POSTGRES_* vars if not already set ──
-// Dublyo (and many PaaS platforms) inject individual vars instead of a URL.
+// Dublyo injects individual vars from linked services (not a single DATABASE_URL).
 if (!process.env.DATABASE_URL && process.env.POSTGRES_PASSWORD) {
-  const user     = process.env.POSTGRES_USER     ?? "postgres";
+  const user     = process.env.POSTGRES_USER      ?? "postgres";
   const password = encodeURIComponent(process.env.POSTGRES_PASSWORD);
-  const host     = process.env.POSTGRES_HOST     ??
-                   process.env.POSTGRES_HOSTNAME ??
-                   process.env.DB_HOST           ?? "localhost";
-  const port     = process.env.POSTGRES_PORT     ?? "5432";
-  const db       = process.env.POSTGRES_DB       ?? "postgres";
+  const host     = process.env.POSTGRES_HOST      ??
+                   process.env.POSTGRES_HOSTNAME  ??
+                   process.env.PGHOST             ??
+                   process.env.DB_HOST            ??
+                   process.env.POSTGRES_SERVICE_HOST ??
+                   // Known Dublyo PostgreSQL hostname from project config
+                   "legalcrm-c74fa891.dublyo.co";
+  const port     = process.env.POSTGRES_PORT      ?? "5432";
+  const db       = process.env.POSTGRES_DB        ?? "postgres";
   process.env.DATABASE_URL = `postgresql://${user}:${password}@${host}:${port}/${db}?sslmode=require`;
   console.log(`[Server] DATABASE_URL constructed from POSTGRES_* vars (host: ${host})`);
 }
@@ -54,8 +58,12 @@ async function startServer() {
   console.log("[Server] NODE_ENV:", process.env.NODE_ENV ?? "(not set)");
   console.log("[Server] DATABASE_URL:", process.env.DATABASE_URL ? "SET ✓" : "NOT SET ✗");
   console.log("[Server] JWT_SECRET:", process.env.JWT_SECRET ? "SET ✓" : "NOT SET ✗");
-  console.log("[Server] POSTGRES_USER:", process.env.POSTGRES_USER ?? "(not set)");
-  console.log("[Server] POSTGRES_HOST:", process.env.POSTGRES_HOST ?? process.env.POSTGRES_HOSTNAME ?? "(not set)");
+  // Log all POSTGRES_* vars so we can see what Dublyo injects
+  const pgVars = ["POSTGRES_USER","POSTGRES_HOST","POSTGRES_HOSTNAME","PGHOST",
+                  "POSTGRES_DB","POSTGRES_PORT","POSTGRES_PASSWORD","DB_HOST"];
+  for (const k of pgVars) {
+    if (process.env[k]) console.log(`[Server] ${k}:`, k.includes("PASSWORD") ? "SET ✓" : process.env[k]);
+  }
 
   const app = express();
   const server = createServer(app);
