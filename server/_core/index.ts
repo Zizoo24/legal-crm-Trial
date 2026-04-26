@@ -1,4 +1,31 @@
-import "dotenv/config";
+import { config as loadDotenv } from "dotenv";
+import fs from "fs";
+
+// ── 1. Load env files from known platform locations ───────────────────────────
+// Dublyo stores platform config under /assets/ (same dir as /assets/Caddyfile)
+const envCandidates = ["/assets/.env", "/assets/env", "/.env", ".env"];
+for (const p of envCandidates) {
+  if (fs.existsSync(p)) {
+    loadDotenv({ path: p, override: false });
+    console.log(`[Server] Loaded env from: ${p}`);
+  }
+}
+loadDotenv({ override: false }); // also try CWD .env (dev / docker-compose)
+
+// ── 2. Build DATABASE_URL from individual POSTGRES_* vars if not already set ──
+// Dublyo (and many PaaS platforms) inject individual vars instead of a URL.
+if (!process.env.DATABASE_URL && process.env.POSTGRES_PASSWORD) {
+  const user     = process.env.POSTGRES_USER     ?? "postgres";
+  const password = encodeURIComponent(process.env.POSTGRES_PASSWORD);
+  const host     = process.env.POSTGRES_HOST     ??
+                   process.env.POSTGRES_HOSTNAME ??
+                   process.env.DB_HOST           ?? "localhost";
+  const port     = process.env.POSTGRES_PORT     ?? "5432";
+  const db       = process.env.POSTGRES_DB       ?? "postgres";
+  process.env.DATABASE_URL = `postgresql://${user}:${password}@${host}:${port}/${db}?sslmode=require`;
+  console.log(`[Server] DATABASE_URL constructed from POSTGRES_* vars (host: ${host})`);
+}
+
 import express from "express";
 import { createServer } from "http";
 import net from "net";
@@ -24,11 +51,11 @@ async function findAvailablePort(startPort = 3000): Promise<number> {
 }
 
 async function startServer() {
-  // Startup diagnostics — helps debug env var injection on cloud platforms
   console.log("[Server] NODE_ENV:", process.env.NODE_ENV ?? "(not set)");
-  console.log("[Server] PORT:", process.env.PORT ?? "(not set, defaulting to 3000)");
   console.log("[Server] DATABASE_URL:", process.env.DATABASE_URL ? "SET ✓" : "NOT SET ✗");
   console.log("[Server] JWT_SECRET:", process.env.JWT_SECRET ? "SET ✓" : "NOT SET ✗");
+  console.log("[Server] POSTGRES_USER:", process.env.POSTGRES_USER ?? "(not set)");
+  console.log("[Server] POSTGRES_HOST:", process.env.POSTGRES_HOST ?? process.env.POSTGRES_HOSTNAME ?? "(not set)");
 
   const app = express();
   const server = createServer(app);
@@ -36,10 +63,8 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  // Health check (unauthenticated) — Dublyo and other platforms probe this
   app.get("/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
-  // tRPC API
   app.use(
     "/api/trpc",
     createExpressMiddleware({ router: appRouter, createContext })
@@ -51,11 +76,8 @@ async function startServer() {
     serveStatic(app);
   }
 
-  // Start listening immediately so Caddy / health checks don't time out
-  // while DB migrations are running
   const preferredPort = parseInt(process.env.PORT || "3000", 10);
   const port = await findAvailablePort(preferredPort);
-
   if (port !== preferredPort) {
     console.log(`[Server] Port ${preferredPort} busy — using ${port}`);
   }
@@ -64,7 +86,6 @@ async function startServer() {
     console.log(`[Server] Running on http://0.0.0.0:${port}`);
   });
 
-  // Run DB migrations and seed in background — server is already accepting requests
   runMigrations()
     .then(() => ensureAdminExists())
     .catch(err => console.warn("[Server] DB setup warning:", (err as Error).message));
