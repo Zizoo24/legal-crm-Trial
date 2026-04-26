@@ -20,18 +20,25 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users, FileText, BarChart3, DollarSign, TrendingUp, UserCog } from "lucide-react";
+import {
+  LayoutDashboard, LogOut, PanelLeft, Users, FileText, BarChart3,
+  DollarSign, TrendingUp, UserCog, Briefcase, CheckSquare, Home
+} from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 
 const menuItems = [
-  { icon: FileText, label: "Enquiry Log", path: "/enquiries" },
-  { icon: BarChart3, label: "Status Tracker", path: "/status-tracker" },
+  { icon: Home,          label: "Dashboard",       path: "/dashboard" },
+  { icon: Users,         label: "Leads",           path: "/leads" },
+  { icon: Briefcase,     label: "Matters",         path: "/matters" },
+  { icon: CheckSquare,   label: "Tasks",           path: "/tasks" },
+  { icon: FileText,      label: "Enquiry Log",     path: "/enquiries" },
+  { icon: BarChart3,     label: "Status Tracker",  path: "/status-tracker" },
   { icon: LayoutDashboard, label: "KPI Dashboard", path: "/kpi-dashboard" },
-  { icon: DollarSign, label: "Payment Tracker", path: "/payment-tracker" },
-  { icon: TrendingUp, label: "Pipeline Forecast", path: "/pipeline-forecast" },
-  { icon: UserCog, label: "User Management", path: "/user-management" },
+  { icon: DollarSign,    label: "Payment Tracker", path: "/payment-tracker" },
+  { icon: TrendingUp,    label: "Pipeline",        path: "/pipeline-forecast" },
+  { icon: UserCog,       label: "User Management", path: "/user-management" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

@@ -1,498 +1,455 @@
-import { eq, desc, sql, and, gte, lte, count } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, enquiries, InsertEnquiry, payments, InsertPayment, Enquiry, auditLogs } from "../drizzle/schema";
-import { ENV } from './_core/env';
+import { and, count, desc, eq, gte, lte, sql, isNull, ne } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import {
+  users, companies, leads, matters, tasks, notes, payments,
+  activityLogs, auditLogs, chatSubmissions,
+  type InsertUser, type InsertLead, type InsertMatter,
+  type InsertTask, type InsertNote, type InsertPayment,
+  type InsertCompany, type InsertActivityLog, type InsertChatSubmission,
+} from "../drizzle/schema";
+import { hashPassword } from "./_core/auth";
 
+// ─── DB Connection ────────────────────────────────────────────────────────────
+
+let _client: ReturnType<typeof postgres> | null = null;
 let _db: ReturnType<typeof drizzle> | null = null;
-let _idGenerationLock: Promise<void> | null = null;
 
-export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
-    try {
-      _db = drizzle(process.env.DATABASE_URL);
-    } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
-      _db = null;
+export function getDb() {
+  if (!_db) {
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      throw new Error("DATABASE_URL environment variable is required");
     }
+    _client = postgres(url, { max: 10 });
+    _db = drizzle(_client);
   }
   return _db;
 }
 
-export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) {
-    throw new Error("User openId is required for upsert");
-  }
+// ─── Users ────────────────────────────────────────────────────────────────────
 
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot upsert user: database not available");
-    return;
-  }
-
-  try {
-    const values: InsertUser = {
-      openId: user.openId,
-    };
-    const updateSet: Record<string, unknown> = {};
-
-    const textFields = ["name", "email", "loginMethod"] as const;
-    type TextField = (typeof textFields)[number];
-
-    const assignNullable = (field: TextField) => {
-      const value = user[field];
-      if (value === undefined) return;
-      const normalized = value ?? null;
-      values[field] = normalized;
-      updateSet[field] = normalized;
-    };
-
-    textFields.forEach(assignNullable);
-
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
-    if (user.role !== undefined) {
-      values.role = user.role;
-      updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
-    }
-
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
-
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
-    });
-  } catch (error) {
-    console.error("[Database] Failed to upsert user:", error);
-    throw error;
-  }
+export async function getUserById(id: number) {
+  const db = getDb();
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return result[0] ?? null;
 }
 
-export async function getUserByOpenId(openId: string) {
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
-    return undefined;
-  }
-
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-
-  return result.length > 0 ? result[0] : undefined;
+export async function getUserByEmail(email: string) {
+  const db = getDb();
+  const result = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+  return result[0] ?? null;
 }
 
-/**
- * Get or create a default user for non-OAuth deployments
- */
-export async function getOrCreateDefaultUser() {
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot get default user: database not available");
-    return null;
-  }
+export async function getAllUsers() {
+  const db = getDb();
+  return db.select().from(users).orderBy(desc(users.createdAt));
+}
 
-  const DEFAULT_OPEN_ID = "default-admin-user";
+export async function createUser(data: InsertUser) {
+  const db = getDb();
+  const [user] = await db.insert(users).values(data).returning();
+  return user;
+}
 
-  // Try to find existing default user
-  const existing = await db.select().from(users).where(eq(users.openId, DEFAULT_OPEN_ID)).limit(1);
+export async function updateUser(id: number, data: Partial<InsertUser>) {
+  const db = getDb();
+  const [user] = await db.update(users).set({ ...data, updatedAt: new Date() }).where(eq(users.id, id)).returning();
+  return user;
+}
 
-  if (existing.length > 0) {
-    return existing[0];
-  }
+export async function updateUserRole(userId: number, role: "user" | "admin" | "viewer") {
+  const db = getDb();
+  await db.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, userId));
+}
 
-  // Create default admin user
+export async function updateUserStatus(userId: number, status: "active" | "inactive" | "suspended") {
+  const db = getDb();
+  await db.update(users).set({ status, updatedAt: new Date() }).where(eq(users.id, userId));
+}
+
+export async function updateLastLogin(userId: number) {
+  const db = getDb();
+  await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, userId));
+}
+
+/** Create default admin on first boot if no users exist */
+export async function ensureAdminExists() {
+  const db = getDb();
+  const existing = await db.select({ count: count() }).from(users);
+  if ((existing[0]?.count ?? 0) > 0) return;
+
+  const hash = await hashPassword("Admin1234!");
   await db.insert(users).values({
-    openId: DEFAULT_OPEN_ID,
+    email: "admin@legalcrm.com",
     name: "Admin User",
-    email: "admin@legalcrm.local",
-    loginMethod: "default",
+    passwordHash: hash,
     role: "admin",
     status: "active",
-    lastSignedIn: new Date(),
   });
-
-  // Fetch and return the created user
-  const created = await db.select().from(users).where(eq(users.openId, DEFAULT_OPEN_ID)).limit(1);
-  return created[0] || null;
+  console.log("[DB] Default admin created: admin@legalcrm.com / Admin1234!");
 }
 
-// ============ ENQUIRY FUNCTIONS ============
+// ─── Companies ────────────────────────────────────────────────────────────────
 
-/**
- * Generate next enquiry ID in format ENQ-0001
- * Uses a simple lock to prevent race conditions in tests
- */
-export async function generateEnquiryId(): Promise<string> {
-  // Wait for any pending ID generation to complete
-  while (_idGenerationLock) {
-    await _idGenerationLock;
-  }
-
-  // Create a new lock
-  let releaseLock: () => void;
-  _idGenerationLock = new Promise(resolve => { releaseLock = resolve; });
-
-  try {
-    const db = await getDb();
-    if (!db) throw new Error("Database not available");
-
-    // Use MAX(id) to get the highest ID, which is safe even with deletions
-    const result = await db
-      .select({ maxId: sql<number>`COALESCE(MAX(${enquiries.id}), 0)` })
-      .from(enquiries);
-
-    const nextNumber = (result[0]?.maxId || 0) + 1;
-    return `ENQ-${String(nextNumber).padStart(4, '0')}`;
-  } finally {
-    // Release the lock
-    _idGenerationLock = null;
-    releaseLock!();
-  }
+export async function getAllCompanies() {
+  const db = getDb();
+  return db.select().from(companies).orderBy(companies.name);
 }
 
-/**
- * Generate matter code in format MAT-YYYY-001
- */
-export async function generateMatterCode(conversionDate: Date): Promise<string> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+export async function getCompanyById(id: number) {
+  const db = getDb();
+  const result = await db.select().from(companies).where(eq(companies.id, id)).limit(1);
+  return result[0] ?? null;
+}
 
-  const year = conversionDate.getFullYear();
-  
-  // Count matters converted in this year
-  const startOfYear = new Date(year, 0, 1);
-  const endOfYear = new Date(year, 11, 31);
-  
+export async function createCompany(data: InsertCompany) {
+  const db = getDb();
+  const [company] = await db.insert(companies).values(data).returning();
+  return company;
+}
+
+export async function updateCompany(id: number, data: Partial<InsertCompany>) {
+  const db = getDb();
+  const [company] = await db
+    .update(companies)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(companies.id, id))
+    .returning();
+  return company;
+}
+
+// ─── Leads ────────────────────────────────────────────────────────────────────
+
+export async function generateLeadCode(): Promise<string> {
+  const db = getDb();
   const result = await db
-    .select({ count: count() })
-    .from(enquiries)
-    .where(
-      and(
-        sql`${enquiries.conversionDate} >= ${startOfYear.toISOString().split('T')[0]}`,
-        sql`${enquiries.conversionDate} <= ${endOfYear.toISOString().split('T')[0]}`
-      )
-    );
-
-  const nextNumber = (result[0]?.count || 0) + 1;
-  return `MAT-${year}-${String(nextNumber).padStart(3, '0')}`;
+    .select({ maxId: sql<number>`COALESCE(MAX(${leads.id}), 0)` })
+    .from(leads);
+  const next = (Number(result[0]?.maxId) || 0) + 1;
+  return `LEAD-${String(next).padStart(4, "0")}`;
 }
 
-/**
- * Create a new enquiry
- */
-export async function createEnquiry(data: Record<string, any>, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+export async function getAllLeads() {
+  const db = getDb();
+  return db.select().from(leads).orderBy(desc(leads.createdAt));
+}
 
-  const enquiryId = await generateEnquiryId();
-  
-  const insertData = {
-    ...data,
-    enquiryId,
-    createdBy: userId,
-  };
+export async function getLeadById(id: number) {
+  const db = getDb();
+  const result = await db.select().from(leads).where(eq(leads.id, id)).limit(1);
+  return result[0] ?? null;
+}
 
-  const [result] = await db.insert(enquiries).values(insertData as any);
-  // Get the last inserted ID from the database
-  const [idResult] = await db.select({ id: sql<number>`LAST_INSERT_ID()` }).from(enquiries).limit(1);
-  const insertedId = idResult?.id || 0;
+export async function createLead(data: Record<string, unknown>, userId: number) {
+  const db = getDb();
+  const leadCode = await generateLeadCode();
 
-  // Create audit log
-  await createAuditLog({
-    enquiryId: insertedId,
-    userId,
+  const [lead] = await db
+    .insert(leads)
+    .values({ ...(data as InsertLead), leadCode, createdBy: userId })
+    .returning();
+
+  await logActivity({
+    entityType: "lead",
+    entityId: lead.id,
     action: "created",
-    description: `Enquiry ${enquiryId} created for client ${data.clientName}`,
+    description: `Lead ${leadCode} created for ${data.clientName}`,
+    performedBy: userId,
   });
 
-  return { id: insertedId, enquiryId };
+  return lead;
 }
 
-/**
- * Update an enquiry
- */
-export async function updateEnquiry(id: number, data: Record<string, any>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  // If conversion date is being set and matter code doesn't exist, generate it
-  if (data.conversionDate && !data.matterCode) {
-    const conversionDate = typeof data.conversionDate === 'string' 
-      ? new Date(data.conversionDate) 
-      : data.conversionDate;
-    data.matterCode = await generateMatterCode(conversionDate);
-  }
-
-  await db.update(enquiries).set(data).where(eq(enquiries.id, id));
-  
-  return await getEnquiryById(id);
+export async function updateLead(id: number, data: Record<string, unknown>) {
+  const db = getDb();
+  const [lead] = await db
+    .update(leads)
+    .set({ ...(data as Partial<InsertLead>), updatedAt: new Date() })
+    .where(eq(leads.id, id))
+    .returning();
+  return lead;
 }
 
-/**
- * Get all enquiries
- */
-export async function getAllEnquiries() {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  return await db.select().from(enquiries).orderBy(desc(enquiries.createdAt));
+export async function deleteLead(id: number) {
+  const db = getDb();
+  await db.delete(leads).where(eq(leads.id, id));
 }
 
-/**
- * Get enquiry by ID
- */
-export async function getEnquiryById(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const result = await db.select().from(enquiries).where(eq(enquiries.id, id)).limit(1);
-  return result[0] || null;
+export async function getLeadStatusSummary() {
+  const db = getDb();
+  return db
+    .select({ status: leads.currentStatus, count: count() })
+    .from(leads)
+    .groupBy(leads.currentStatus);
 }
 
-/**
- * Get enquiries by status
- */
-export async function getEnquiriesByStatus(status: string) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+export async function getLeadKpiMetrics() {
+  const db = getDb();
+  const [totalRow] = await db.select({ count: count() }).from(leads);
+  const total = Number(totalRow?.count ?? 0);
 
-  return await db.select().from(enquiries).where(eq(enquiries.currentStatus, status));
-}
-
-/**
- * Delete enquiry
- */
-export async function deleteEnquiry(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  await db.delete(enquiries).where(eq(enquiries.id, id));
-}
-
-// ============ PAYMENT FUNCTIONS ============
-
-/**
- * Create payment record
- */
-export async function createPayment(data: Record<string, any>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const [result] = await db.insert(payments).values(data as any);
-  // Get the last inserted ID from the database
-  const [idResult] = await db.select({ id: sql<number>`LAST_INSERT_ID()` }).from(payments).limit(1);
-  const insertedId = idResult?.id || 0;
-  return { id: insertedId };
-}
-
-/**
- * Update payment
- */
-export async function updatePayment(id: number, data: Record<string, any>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  await db.update(payments).set(data).where(eq(payments.id, id));
-  return await getPaymentById(id);
-}
-
-/**
- * Get payment by enquiry ID
- */
-export async function getPaymentByEnquiryId(enquiryId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const result = await db.select().from(payments).where(eq(payments.enquiryId, enquiryId)).limit(1);
-  return result[0] || null;
-}
-
-/**
- * Get payment by ID
- */
-export async function getPaymentById(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const result = await db.select().from(payments).where(eq(payments.id, id)).limit(1);
-  return result[0] || null;
-}
-
-/**
- * Get all payments
- */
-export async function getAllPayments() {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  return await db.select().from(payments).orderBy(desc(payments.createdAt));
-}
-
-// ============ DASHBOARD FUNCTIONS ============
-
-/**
- * Get status summary for Status Tracker
- */
-export async function getStatusSummary() {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const result = await db
-    .select({
-      status: enquiries.currentStatus,
-      count: count(),
-    })
-    .from(enquiries)
-    .groupBy(enquiries.currentStatus);
-
-  return result;
-}
-
-/**
- * Get KPI metrics
- */
-export async function getKPIMetrics() {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  // Total enquiries
-  const totalResult = await db.select({ count: count() }).from(enquiries);
-  const total = totalResult[0]?.count || 0;
-
-  // Converted enquiries
-  const convertedResult = await db
+  const [convertedRow] = await db
     .select({ count: count() })
-    .from(enquiries)
-    .where(eq(enquiries.currentStatus, 'Converted'));
-  const converted = convertedResult[0]?.count || 0;
+    .from(leads)
+    .where(eq(leads.currentStatus, "Converted"));
+  const converted = Number(convertedRow?.count ?? 0);
 
-  // This month enquiries
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const thisMonthResult = await db
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+  const [thisMonthRow] = await db
     .select({ count: count() })
-    .from(enquiries)
-    .where(sql`${enquiries.dateOfEnquiry} >= ${startOfMonth.toISOString().split('T')[0]}`);
-  const thisMonth = thisMonthResult[0]?.count || 0;
+    .from(leads)
+    .where(sql`${leads.dateOfEnquiry} >= ${startOfMonth}`);
+  const thisMonth = Number(thisMonthRow?.count ?? 0);
 
-  // Total revenue
-  const revenueResult = await db
-    .select({ 
-      total: sql<number>`COALESCE(SUM(${enquiries.proposalValue}), 0)` 
-    })
-    .from(enquiries)
-    .where(eq(enquiries.currentStatus, 'Converted'));
-  const revenue = Number(revenueResult[0]?.total || 0);
+  const [revenueRow] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${leads.proposalValue}), 0)` })
+    .from(leads)
+    .where(eq(leads.currentStatus, "Converted"));
+  const revenue = Number(revenueRow?.total ?? 0);
+
+  const [activeMatterRow] = await db
+    .select({ count: count() })
+    .from(matters)
+    .where(eq(matters.status, "active"));
+  const activeMatters = Number(activeMatterRow?.count ?? 0);
+
+  const [pendingTaskRow] = await db
+    .select({ count: count() })
+    .from(tasks)
+    .where(ne(tasks.status, "done"));
+  const pendingTasks = Number(pendingTaskRow?.count ?? 0);
 
   return {
-    totalEnquiries: total,
-    convertedEnquiries: converted,
-    conversionRate: total > 0 ? (converted / total) * 100 : 0,
-    thisMonthEnquiries: thisMonth,
+    totalLeads: total,
+    newLeads: thisMonth,
+    convertedLeads: converted,
+    conversionRate: total > 0 ? Math.round((converted / total) * 100) : 0,
     totalRevenue: revenue,
+    activeMatters,
+    pendingTasks,
   };
 }
 
-/**
- * Get pipeline forecast
- */
 export async function getPipelineForecast() {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  // Status probability weights
+  const db = getDb();
   const weights: Record<string, number> = {
-    'Pending': 0.1,
-    'Contacted': 0.2,
-    'Meeting Scheduled': 0.4,
-    'Proposal Sent': 0.6,
-    'Converted': 1.0,
+    New: 0.05,
+    Contacted: 0.15,
+    "Meeting Scheduled": 0.35,
+    "Proposal Sent": 0.6,
+    Converted: 1.0,
+    Lost: 0,
+    "On Hold": 0.1,
   };
 
-  const result = await db
+  const rows = await db
     .select({
-      status: enquiries.currentStatus,
+      status: leads.currentStatus,
       count: count(),
-      totalValue: sql<number>`COALESCE(SUM(${enquiries.proposalValue}), 0)`,
+      totalValue: sql<string>`COALESCE(SUM(${leads.proposalValue}), 0)`,
     })
-    .from(enquiries)
-    .groupBy(enquiries.currentStatus);
+    .from(leads)
+    .groupBy(leads.currentStatus);
 
-  return result.map(row => ({
-    status: row.status,
-    count: row.count,
-    totalValue: Number(row.totalValue),
-    probability: weights[row.status || ''] || 0,
-    weightedValue: Number(row.totalValue) * (weights[row.status || ''] || 0),
+  return rows.map(r => ({
+    status: r.status,
+    count: r.count,
+    totalValue: Number(r.totalValue),
+    probability: weights[r.status ?? ""] ?? 0,
+    weightedValue: Number(r.totalValue) * (weights[r.status ?? ""] ?? 0),
   }));
 }
 
-// ============ USER MANAGEMENT FUNCTIONS ============
-
-/**
- * Get all users with activity information
- */
-export async function getAllUsers() {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const allUsers = await db.select().from(users).orderBy(desc(users.lastSignedIn));
-  return allUsers;
+export async function getRecentActivity(limit = 20) {
+  const db = getDb();
+  return db
+    .select()
+    .from(activityLogs)
+    .orderBy(desc(activityLogs.createdAt))
+    .limit(limit);
 }
 
-/**
- * Update user role
- */
-export async function updateUserRole(userId: number, role: "user" | "admin") {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+// ─── Matters ─────────────────────────────────────────────────────────────────
 
-  await db.update(users).set({ role }).where(eq(users.id, userId));
-}
-
-/**
- * Update user status
- */
-export async function updateUserStatus(userId: number, status: "active" | "inactive" | "suspended") {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  await db.update(users).set({ status }).where(eq(users.id, userId));
-}
-
-/**
- * Get user activity statistics
- */
-export async function getUserActivityStats(userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  // Count enquiries created by this user
-  const enquiryCount = await db
+export async function generateMatterCode(): Promise<string> {
+  const db = getDb();
+  const year = new Date().getFullYear();
+  const [row] = await db
     .select({ count: count() })
-    .from(enquiries)
-    .where(eq(enquiries.createdBy, userId));
-
-  return {
-    enquiriesCreated: enquiryCount[0]?.count || 0,
-  };
+    .from(matters)
+    .where(sql`EXTRACT(YEAR FROM ${matters.createdAt}) = ${year}`);
+  const next = (Number(row?.count ?? 0)) + 1;
+  return `MAT-${year}-${String(next).padStart(3, "0")}`;
 }
 
-// ============ AUDIT LOG FUNCTIONS ============
+export async function getAllMatters() {
+  const db = getDb();
+  return db.select().from(matters).orderBy(desc(matters.createdAt));
+}
 
-/**
- * Create an audit log entry
- */
+export async function getMatterById(id: number) {
+  const db = getDb();
+  const result = await db.select().from(matters).where(eq(matters.id, id)).limit(1);
+  return result[0] ?? null;
+}
+
+export async function createMatter(data: Record<string, unknown>, userId: number) {
+  const db = getDb();
+  const matterCode = await generateMatterCode();
+
+  const [matter] = await db
+    .insert(matters)
+    .values({ ...(data as InsertMatter), matterCode, createdBy: userId })
+    .returning();
+
+  await logActivity({
+    entityType: "matter",
+    entityId: matter.id,
+    action: "created",
+    description: `Matter ${matterCode} opened: ${data.title}`,
+    performedBy: userId,
+  });
+
+  return matter;
+}
+
+export async function updateMatter(id: number, data: Record<string, unknown>) {
+  const db = getDb();
+  const [matter] = await db
+    .update(matters)
+    .set({ ...(data as Partial<InsertMatter>), updatedAt: new Date() })
+    .where(eq(matters.id, id))
+    .returning();
+  return matter;
+}
+
+export async function deleteMatter(id: number) {
+  const db = getDb();
+  await db.delete(matters).where(eq(matters.id, id));
+}
+
+// ─── Tasks ────────────────────────────────────────────────────────────────────
+
+export async function getAllTasks(filters?: { matterId?: number; assignedTo?: number; status?: string }) {
+  const db = getDb();
+  const conditions = [];
+  if (filters?.matterId) conditions.push(eq(tasks.matterId, filters.matterId));
+  if (filters?.assignedTo) conditions.push(eq(tasks.assignedTo, filters.assignedTo));
+  if (filters?.status) conditions.push(eq(tasks.status, filters.status as typeof tasks.status._.data));
+
+  return db
+    .select()
+    .from(tasks)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(tasks.dueDate, desc(tasks.createdAt));
+}
+
+export async function getTaskById(id: number) {
+  const db = getDb();
+  const result = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
+  return result[0] ?? null;
+}
+
+export async function createTask(data: Record<string, unknown>, userId: number) {
+  const db = getDb();
+  const [task] = await db
+    .insert(tasks)
+    .values({ ...(data as InsertTask), createdBy: userId })
+    .returning();
+  return task;
+}
+
+export async function updateTask(id: number, data: Record<string, unknown>) {
+  const db = getDb();
+  const completedAt = data.status === "done" ? new Date() : undefined;
+  const [task] = await db
+    .update(tasks)
+    .set({ ...(data as Partial<InsertTask>), updatedAt: new Date(), ...(completedAt ? { completedAt } : {}) })
+    .where(eq(tasks.id, id))
+    .returning();
+  return task;
+}
+
+export async function deleteTask(id: number) {
+  const db = getDb();
+  await db.delete(tasks).where(eq(tasks.id, id));
+}
+
+// ─── Notes ────────────────────────────────────────────────────────────────────
+
+export async function getNotesByEntity(entityType: string, entityId: number) {
+  const db = getDb();
+  return db
+    .select()
+    .from(notes)
+    .where(and(eq(notes.entityType, entityType), eq(notes.entityId, entityId)))
+    .orderBy(desc(notes.createdAt));
+}
+
+export async function createNote(data: InsertNote) {
+  const db = getDb();
+  const [note] = await db.insert(notes).values(data).returning();
+  return note;
+}
+
+export async function deleteNote(id: number) {
+  const db = getDb();
+  await db.delete(notes).where(eq(notes.id, id));
+}
+
+// ─── Payments ─────────────────────────────────────────────────────────────────
+
+export async function getAllPayments() {
+  const db = getDb();
+  return db.select().from(payments).orderBy(desc(payments.createdAt));
+}
+
+export async function getPaymentByLeadId(leadId: number) {
+  const db = getDb();
+  const result = await db.select().from(payments).where(eq(payments.leadId, leadId)).limit(1);
+  return result[0] ?? null;
+}
+
+export async function getPaymentById(id: number) {
+  const db = getDb();
+  const result = await db.select().from(payments).where(eq(payments.id, id)).limit(1);
+  return result[0] ?? null;
+}
+
+export async function createPayment(data: Record<string, unknown>) {
+  const db = getDb();
+  const [payment] = await db.insert(payments).values(data as InsertPayment).returning();
+  return payment;
+}
+
+export async function updatePayment(id: number, data: Record<string, unknown>) {
+  const db = getDb();
+  const [payment] = await db
+    .update(payments)
+    .set({ ...(data as Partial<InsertPayment>), updatedAt: new Date() })
+    .where(eq(payments.id, id))
+    .returning();
+  return payment;
+}
+
+// ─── Activity Logging ─────────────────────────────────────────────────────────
+
+export async function logActivity(data: InsertActivityLog) {
+  try {
+    const db = getDb();
+    await db.insert(activityLogs).values(data);
+  } catch {
+    // Non-critical — don't fail the main operation
+  }
+}
+
+// ─── Audit Logs ───────────────────────────────────────────────────────────────
+
 export async function createAuditLog(data: {
-  enquiryId: number;
+  entityType?: string;
+  entityId: number;
   userId: number;
   action: "created" | "updated" | "deleted" | "status_changed" | "assigned";
   fieldName?: string;
@@ -500,67 +457,48 @@ export async function createAuditLog(data: {
   newValue?: string;
   description?: string;
 }) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  await db.insert(auditLogs).values(data);
+  const db = getDb();
+  await db.insert(auditLogs).values({ entityType: "lead", ...data });
 }
 
-/**
- * Get audit logs for an enquiry
- */
-export async function getAuditLogsByEnquiry(enquiryId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const logs = await db
-    .select({
-      id: auditLogs.id,
-      action: auditLogs.action,
-      fieldName: auditLogs.fieldName,
-      oldValue: auditLogs.oldValue,
-      newValue: auditLogs.newValue,
-      description: auditLogs.description,
-      createdAt: auditLogs.createdAt,
-      userName: users.name,
-      userEmail: users.email,
-    })
+export async function getAuditLogsByEntity(entityType: string, entityId: number) {
+  const db = getDb();
+  return db
+    .select()
     .from(auditLogs)
-    .leftJoin(users, eq(auditLogs.userId, users.id))
-    .where(eq(auditLogs.enquiryId, enquiryId))
+    .where(and(eq(auditLogs.entityType, entityType), eq(auditLogs.entityId, entityId)))
     .orderBy(desc(auditLogs.createdAt));
-
-  return logs;
 }
 
-/**
- * Get all audit logs with pagination
- */
-export async function getAllAuditLogs(limit: number = 100, offset: number = 0) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+// ─── Chat Submissions ─────────────────────────────────────────────────────────
 
-  const logs = await db
-    .select({
-      id: auditLogs.id,
-      enquiryId: auditLogs.enquiryId,
-      action: auditLogs.action,
-      fieldName: auditLogs.fieldName,
-      oldValue: auditLogs.oldValue,
-      newValue: auditLogs.newValue,
-      description: auditLogs.description,
-      createdAt: auditLogs.createdAt,
-      userName: users.name,
-      userEmail: users.email,
-      enquiryCode: enquiries.enquiryId,
-      clientName: enquiries.clientName,
-    })
-    .from(auditLogs)
-    .leftJoin(users, eq(auditLogs.userId, users.id))
-    .leftJoin(enquiries, eq(auditLogs.enquiryId, enquiries.id))
-    .orderBy(desc(auditLogs.createdAt))
-    .limit(limit)
-    .offset(offset);
+export async function getAllChatSubmissions() {
+  const db = getDb();
+  return db.select().from(chatSubmissions).orderBy(desc(chatSubmissions.createdAt));
+}
 
-  return logs;
+export async function createChatSubmission(data: InsertChatSubmission) {
+  const db = getDb();
+  const [sub] = await db.insert(chatSubmissions).values(data).returning();
+  return sub;
+}
+
+export async function updateChatSubmissionStatus(id: number, status: "new" | "read" | "replied" | "converted") {
+  const db = getDb();
+  await db.update(chatSubmissions).set({ status, updatedAt: new Date() }).where(eq(chatSubmissions.id, id));
+}
+
+// ─── Dashboard Stats ──────────────────────────────────────────────────────────
+
+export async function getDashboardStats() {
+  return getLeadKpiMetrics();
+}
+
+export async function getUserActivityStats(userId: number) {
+  const db = getDb();
+  const [leadCount] = await db
+    .select({ count: count() })
+    .from(leads)
+    .where(eq(leads.createdBy, userId));
+  return { leadsCreated: Number(leadCount?.count ?? 0) };
 }

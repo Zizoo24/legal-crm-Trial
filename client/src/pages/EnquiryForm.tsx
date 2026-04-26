@@ -59,15 +59,15 @@ export default function EnquiryForm({ id }: EnquiryFormProps) {
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
   
-  const { data: enquiry, isLoading: loadingEnquiry } = trpc.enquiries.get.useQuery(
+  const { data: enquiry, isLoading: loadingEnquiry } = trpc.leads.get.useQuery(
     { id: id! },
     { enabled: !!id }
   );
 
-  const createMutation = trpc.enquiries.create.useMutation({
+  const createMutation = trpc.leads.create.useMutation({
     onSuccess: () => {
       toast.success("Enquiry created successfully");
-      utils.enquiries.list.invalidate();
+      utils.leads.list.invalidate();
       navigate("/enquiries");
     },
     onError: (error) => {
@@ -75,11 +75,11 @@ export default function EnquiryForm({ id }: EnquiryFormProps) {
     },
   });
 
-  const updateMutation = trpc.enquiries.update.useMutation({
+  const updateMutation = trpc.leads.update.useMutation({
     onSuccess: () => {
       toast.success("Enquiry updated successfully");
-      utils.enquiries.list.invalidate();
-      utils.enquiries.get.invalidate({ id: id! });
+      utils.leads.list.invalidate();
+      utils.leads.get.invalidate({ id: id! });
     },
     onError: (error) => {
       toast.error(`Failed to update enquiry: ${error.message}`);
@@ -128,7 +128,7 @@ export default function EnquiryForm({ id }: EnquiryFormProps) {
         </Button>
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
-            {id ? `Edit Enquiry ${enquiry?.enquiryId}` : "New Enquiry"}
+            {id ? `Edit Enquiry ${enquiry?.leadCode}` : "New Enquiry"}
           </h1>
           <p className="text-gray-600 mt-1">
             {id ? "Update enquiry details" : "Create a new client enquiry"}

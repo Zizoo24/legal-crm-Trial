@@ -1,0 +1,281 @@
+import { Link } from "wouter";
+import {
+  Users, Briefcase, CheckSquare, TrendingUp, DollarSign,
+  ArrowRight, Plus, Clock, AlertCircle
+} from "lucide-react";
+import { trpc } from "@/lib/trpc";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import DashboardLayout from "@/components/DashboardLayout";
+
+function StatCard({
+  title, value, subtitle, icon: Icon, color, href
+}: {
+  title: string;
+  value: string | number;
+  subtitle?: string;
+  icon: React.ElementType;
+  color: string;
+  href?: string;
+}) {
+  const content = (
+    <Card className="hover:shadow-md transition-shadow cursor-pointer">
+      <CardContent className="pt-6">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">{title}</p>
+            <p className="text-3xl font-bold mt-1">{value}</p>
+            {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
+          </div>
+          <div className={`p-3 rounded-xl ${color}`}>
+            <Icon className="h-6 w-6 text-white" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+  return href ? <Link href={href}>{content}</Link> : content;
+}
+
+export default function Dashboard() {
+  const { data: stats, isLoading } = trpc.dashboard.stats.useQuery();
+  const { data: me } = trpc.auth.me.useQuery();
+  const { data: recentActivity } = trpc.dashboard.recentActivity.useQuery({ limit: 8 });
+  const { data: leads } = trpc.leads.list.useQuery();
+  const { data: tasks } = trpc.tasks.list.useQuery({});
+
+  const pendingTasks = tasks?.filter(t => t.status !== "done") ?? [];
+  const overdueTasks = pendingTasks.filter(t => t.dueDate && new Date(t.dueDate) < new Date());
+  const recentLeads = (leads ?? []).slice(0, 5);
+
+  const formatCurrency = (n: number) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(n);
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">Dashboard</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">
+              Welcome back{me?.name ? `, ${me.name}` : ""}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Link href="/leads/new">
+              <Button size="sm">
+                <Plus className="h-4 w-4 mr-1" /> New Lead
+              </Button>
+            </Link>
+            <Link href="/tasks/new">
+              <Button size="sm" variant="outline">
+                <Plus className="h-4 w-4 mr-1" /> New Task
+              </Button>
+            </Link>
+          </div>
+        </div>
+
+        {/* KPI Cards */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i}><CardContent className="pt-6"><div className="h-16 animate-pulse bg-muted rounded" /></CardContent></Card>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard
+              title="Total Leads"
+              value={stats?.totalLeads ?? 0}
+              subtitle={`${stats?.newLeads ?? 0} new this month`}
+              icon={Users}
+              color="bg-blue-500"
+              href="/leads"
+            />
+            <StatCard
+              title="Active Matters"
+              value={stats?.activeMatters ?? 0}
+              subtitle="Open cases"
+              icon={Briefcase}
+              color="bg-indigo-500"
+              href="/matters"
+            />
+            <StatCard
+              title="Pending Tasks"
+              value={stats?.pendingTasks ?? 0}
+              subtitle={overdueTasks.length > 0 ? `${overdueTasks.length} overdue` : "All on track"}
+              icon={CheckSquare}
+              color={overdueTasks.length > 0 ? "bg-orange-500" : "bg-green-500"}
+              href="/tasks"
+            />
+            <StatCard
+              title="Conversion Rate"
+              value={`${stats?.conversionRate ?? 0}%`}
+              subtitle={`${stats?.convertedLeads ?? 0} converted leads`}
+              icon={TrendingUp}
+              color="bg-purple-500"
+            />
+          </div>
+        )}
+
+        {/* Revenue card */}
+        {stats && stats.totalRevenue > 0 && (
+          <Card className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-0">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-blue-100 text-sm font-medium">Total Revenue (Converted)</p>
+                  <p className="text-3xl font-bold mt-1">{formatCurrency(stats.totalRevenue)}</p>
+                </div>
+                <DollarSign className="h-12 w-12 text-blue-200 opacity-60" />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="grid lg:grid-cols-2 gap-6">
+          {/* Recent Leads */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">Recent Leads</CardTitle>
+                <Link href="/leads">
+                  <Button variant="ghost" size="sm" className="text-xs">
+                    View all <ArrowRight className="ml-1 h-3 w-3" />
+                  </Button>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {recentLeads.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground text-sm">
+                  No leads yet.{" "}
+                  <Link href="/leads/new" className="text-blue-600 hover:underline">Add the first one</Link>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {recentLeads.map(lead => (
+                    <Link key={lead.id} href={`/leads/${lead.id}`}>
+                      <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm truncate">{lead.clientName}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {lead.serviceRequested || lead.leadCode}
+                          </p>
+                        </div>
+                        <StatusBadge status={lead.currentStatus ?? "New"} />
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Pending Tasks */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">Pending Tasks</CardTitle>
+                <Link href="/tasks">
+                  <Button variant="ghost" size="sm" className="text-xs">
+                    View all <ArrowRight className="ml-1 h-3 w-3" />
+                  </Button>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {pendingTasks.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground text-sm">
+                  No pending tasks.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {pendingTasks.slice(0, 5).map(task => {
+                    const isOverdue = task.dueDate && new Date(task.dueDate) < new Date();
+                    return (
+                      <div key={task.id} className="flex items-start gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 transition-colors">
+                        {isOverdue ? (
+                          <AlertCircle className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
+                        ) : (
+                          <Clock className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-sm truncate">{task.title}</p>
+                          {task.dueDate && (
+                            <p className={`text-xs mt-0.5 ${isOverdue ? "text-orange-500" : "text-muted-foreground"}`}>
+                              Due {new Date(task.dueDate).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                        <PriorityBadge priority={task.priority ?? "medium"} />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Recent Activity */}
+        {recentActivity && recentActivity.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Recent Activity</CardTitle>
+              <CardDescription>Latest actions in the CRM</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {recentActivity.map(log => (
+                  <div key={log.id} className="flex items-start gap-3 text-sm">
+                    <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm">{log.description ?? log.action}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {new Date(log.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </DashboardLayout>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    New: "bg-blue-100 text-blue-700",
+    Contacted: "bg-yellow-100 text-yellow-700",
+    "Meeting Scheduled": "bg-purple-100 text-purple-700",
+    "Proposal Sent": "bg-orange-100 text-orange-700",
+    Converted: "bg-green-100 text-green-700",
+    Lost: "bg-red-100 text-red-700",
+    "On Hold": "bg-gray-100 text-gray-600",
+  };
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[status] ?? "bg-gray-100 text-gray-600"}`}>
+      {status}
+    </span>
+  );
+}
+
+function PriorityBadge({ priority }: { priority: string }) {
+  const map: Record<string, string> = {
+    low: "bg-gray-100 text-gray-600",
+    medium: "bg-blue-100 text-blue-700",
+    high: "bg-orange-100 text-orange-700",
+    urgent: "bg-red-100 text-red-700",
+  };
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${map[priority] ?? "bg-gray-100 text-gray-600"}`}>
+      {priority}
+    </span>
+  );
+}

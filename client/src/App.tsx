@@ -1,64 +1,119 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Redirect, Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
+import ProtectedRoute from "./components/ProtectedRoute";
 import { ThemeProvider } from "./contexts/ThemeContext";
+
+// Pages
+import Login from "@/pages/Login";
+import Dashboard from "@/pages/Dashboard";
+import EnquiryList from "@/pages/EnquiryList";
+import EnquiryForm from "@/pages/EnquiryForm";
+import StatusTracker from "@/pages/StatusTracker";
+import KPIDashboard from "@/pages/KPIDashboard";
+import PaymentTracker from "@/pages/PaymentTracker";
+import PipelineForecast from "@/pages/PipelineForecast";
+import UserManagement from "@/pages/UserManagement";
+import MatterList from "@/pages/MatterList";
+import TaskList from "@/pages/TaskList";
 import DashboardLayout from "./components/DashboardLayout";
-import Home from "./pages/Home";
-import UserManagement from "./pages/UserManagement";
-import EnquiryList from "./pages/EnquiryList";
-import EnquiryForm from "./pages/EnquiryForm";
-import StatusTracker from "./pages/StatusTracker";
-import KPIDashboard from "./pages/KPIDashboard";
-import PaymentTracker from "./pages/PaymentTracker";
-import PipelineForecast from "./pages/PipelineForecast";
 
 function Router() {
   return (
     <Switch>
-      <Route path={"/"} component={Home} />
-      <Route path={"/enquiries"}>
-        <DashboardLayout>
-          <EnquiryList />
-        </DashboardLayout>
+      {/* Public routes */}
+      <Route path="/login" component={Login} />
+
+      {/* Root → redirect to dashboard */}
+      <Route path="/">
+        <Redirect to="/dashboard" />
       </Route>
-      <Route path={"/enquiries/new"}>
-        <DashboardLayout>
-          <EnquiryForm />
-        </DashboardLayout>
+
+      {/* Protected routes */}
+      <Route path="/dashboard">
+        <ProtectedRoute><Dashboard /></ProtectedRoute>
       </Route>
-      <Route path={"/enquiries/:id"}>
+
+      {/* Leads — also aliased as /leads from the old /enquiries */}
+      <Route path="/leads">
+        <ProtectedRoute>
+          <DashboardLayout><EnquiryList /></DashboardLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/leads/new">
+        <ProtectedRoute>
+          <DashboardLayout><EnquiryForm /></DashboardLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/leads/:id">
         {(params) => (
-          <DashboardLayout>
-            <EnquiryForm id={parseInt(params.id)} />
-          </DashboardLayout>
+          <ProtectedRoute>
+            <DashboardLayout><EnquiryForm id={parseInt(params.id)} /></DashboardLayout>
+          </ProtectedRoute>
         )}
       </Route>
-      <Route path={"/status-tracker"}>
-        <DashboardLayout>
-          <StatusTracker />
-        </DashboardLayout>
+
+      {/* Enquiries (legacy URLs still work) */}
+      <Route path="/enquiries">
+        <ProtectedRoute>
+          <DashboardLayout><EnquiryList /></DashboardLayout>
+        </ProtectedRoute>
       </Route>
-      <Route path={"/kpi-dashboard"}>
-        <DashboardLayout>
-          <KPIDashboard />
-        </DashboardLayout>
+      <Route path="/enquiries/new">
+        <ProtectedRoute>
+          <DashboardLayout><EnquiryForm /></DashboardLayout>
+        </ProtectedRoute>
       </Route>
-      <Route path={"/payment-tracker"}>
-        <DashboardLayout>
-          <PaymentTracker />
-        </DashboardLayout>
+      <Route path="/enquiries/:id">
+        {(params) => (
+          <ProtectedRoute>
+            <DashboardLayout><EnquiryForm id={parseInt(params.id)} /></DashboardLayout>
+          </ProtectedRoute>
+        )}
       </Route>
-      <Route path={"/pipeline-forecast"}>
-        <DashboardLayout>
-          <PipelineForecast />
-        </DashboardLayout>
+
+      {/* Matters */}
+      <Route path="/matters">
+        <ProtectedRoute><MatterList /></ProtectedRoute>
       </Route>
-      <Route path={"/"} component={Home} />
-      <Route path={"/user-management"} component={UserManagement} />
-      <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
+
+      {/* Tasks */}
+      <Route path="/tasks">
+        <ProtectedRoute><TaskList /></ProtectedRoute>
+      </Route>
+
+      {/* Analytics */}
+      <Route path="/status-tracker">
+        <ProtectedRoute>
+          <DashboardLayout><StatusTracker /></DashboardLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/kpi-dashboard">
+        <ProtectedRoute>
+          <DashboardLayout><KPIDashboard /></DashboardLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/payment-tracker">
+        <ProtectedRoute>
+          <DashboardLayout><PaymentTracker /></DashboardLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/pipeline-forecast">
+        <ProtectedRoute>
+          <DashboardLayout><PipelineForecast /></DashboardLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Admin */}
+      <Route path="/user-management">
+        <ProtectedRoute>
+          <DashboardLayout><UserManagement /></DashboardLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
   );
