@@ -23,7 +23,12 @@ export function getDb() {
     if (!url) {
       throw new Error("DATABASE_URL environment variable is required");
     }
-    _client = postgres(url, { max: 10, ssl: url.includes("sslmode=require") ? "require" : false });
+    _client = postgres(url, {
+      max: 10,
+      ssl: url.includes("sslmode=require") ? "require" : false,
+      connect_timeout: 10,
+      idle_timeout: 30,
+    });
     _db = drizzle(_client);
   }
   return _db;

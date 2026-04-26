@@ -45,14 +45,8 @@ async function startServer() {
     serveStatic(app);
   }
 
-  // Run DB migrations then seed admin on first boot
-  try {
-    await runMigrations();
-    await ensureAdminExists();
-  } catch (err) {
-    console.warn("[Server] DB setup warning:", (err as Error).message);
-  }
-
+  // Start listening immediately so Caddy / health checks don't time out
+  // while DB migrations are running
   const preferredPort = parseInt(process.env.PORT || "3000", 10);
   const port = await findAvailablePort(preferredPort);
 
@@ -63,6 +57,11 @@ async function startServer() {
   server.listen(port, "0.0.0.0", () => {
     console.log(`[Server] Running on http://0.0.0.0:${port}`);
   });
+
+  // Run DB migrations and seed in background — server is already accepting requests
+  runMigrations()
+    .then(() => ensureAdminExists())
+    .catch(err => console.warn("[Server] DB setup warning:", (err as Error).message));
 }
 
 startServer().catch(console.error);
