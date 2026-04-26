@@ -22,8 +22,9 @@ export const appRouter = router({
         try {
           user = await db.getUserByEmail(input.email);
         } catch (err: any) {
+          console.error("[Auth] DB error during login:", err?.message ?? err);
           const msg = (err?.message ?? "") as string;
-          if (msg.includes("DATABASE_URL") || msg.includes("connect") || msg.includes("ECONNREFUSED")) {
+          if (msg.includes("DATABASE_URL") || msg.includes("connect") || msg.includes("ECONNREFUSED") || msg.includes("password") || msg.includes("ssl") || msg.includes("SSL") || msg.includes("timeout")) {
             throw new Error("Database connection failed — please check server configuration");
           }
           throw err;

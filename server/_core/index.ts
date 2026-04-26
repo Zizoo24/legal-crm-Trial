@@ -24,6 +24,12 @@ async function findAvailablePort(startPort = 3000): Promise<number> {
 }
 
 async function startServer() {
+  // Startup diagnostics — helps debug env var injection on cloud platforms
+  console.log("[Server] NODE_ENV:", process.env.NODE_ENV ?? "(not set)");
+  console.log("[Server] PORT:", process.env.PORT ?? "(not set, defaulting to 3000)");
+  console.log("[Server] DATABASE_URL:", process.env.DATABASE_URL ? "SET ✓" : "NOT SET ✗");
+  console.log("[Server] JWT_SECRET:", process.env.JWT_SECRET ? "SET ✓" : "NOT SET ✗");
+
   const app = express();
   const server = createServer(app);
 
