@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+*.log
+.git/
+.github/
+.manus/
+patches/
+coverage/
+todo.md
+DATABASE_MANAGEMENT_GUIDE.md
+USER_GUIDE.md
+README.md
