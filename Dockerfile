@@ -2,17 +2,12 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 
-# Install pnpm (bypass Corepack hash enforcement)
 RUN npm install -g pnpm@10 --force
 
-# Install all dependencies (dev + prod needed for build)
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
-# Copy source and build
 COPY . .
-# Ensure .env always exists (Dublyo may inject it into build context; touch is a no-op if it does)
-RUN touch .env
 RUN pnpm build
 
 # ── Stage 2: Production runtime ──────────────────────────────────────────────
@@ -20,22 +15,16 @@ FROM node:22-alpine
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV DATABASE_URL="postgresql://postgres:a75cd31b330923a0bd5a469e31e5e3d1@legalcrm-c74fa891.dublyo.co:5432/app?sslmode=require"
+ENV JWT_SECRET="51685c51d315bce06249035bb4ddaba890a6911af7c2b5afb9a24c410dd33588"
 
-# Install pnpm for production install
 RUN npm install -g pnpm@10 --force
 
-# Install only production dependencies
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --prod
 
-# Copy compiled client + server from builder
 COPY --from=builder /app/dist ./dist
-
-# Copy DB migration SQL (read at runtime by runMigrations())
 COPY --from=builder /app/drizzle ./drizzle
-
-# Copy .env from builder (Dublyo writes App Settings env vars here at build time)
-COPY --from=builder /app/.env ./.env
 
 EXPOSE 3000
 

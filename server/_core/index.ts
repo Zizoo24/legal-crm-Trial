@@ -1,49 +1,26 @@
 import { config as loadDotenv } from "dotenv";
 import fs from "fs";
 
-// ── 0. Diagnostics: list /assets/ so we can see what Dublyo mounts ────────────
-try {
-  if (fs.existsSync("/assets")) {
-    const entries = fs.readdirSync("/assets");
-    console.log("[Server] /assets/ contents:", entries.length ? entries.join(", ") : "(empty)");
-  } else {
-    console.log("[Server] /assets/ does not exist");
-  }
-} catch (e) {
-  console.log("[Server] /assets/ read error:", (e as Error).message);
-}
-
-// ── 0b. Dump all env var KEY names (not values) so we can see what's injected ─
-const allKeys = Object.keys(process.env).filter(k => !k.startsWith("npm_")).sort();
-console.log("[Server] process.env keys:", allKeys.join(", "));
-
-// ── 1. Load env files from known platform locations ───────────────────────────
-// Dublyo stores platform config under /assets/ (same dir as /assets/Caddyfile)
-const envCandidates = ["/assets/.env", "/assets/env", "/assets/app.env", "/run/secrets/.env", "/.env", ".env"];
+// Load any supplementary .env files (local dev, mounted volumes, etc.)
+const envCandidates = ["/assets/.env", "/assets/env", "/.env", ".env"];
 for (const p of envCandidates) {
   if (fs.existsSync(p)) {
     loadDotenv({ path: p, override: false });
-    console.log(`[Server] Loaded env from: ${p}`);
   }
 }
-loadDotenv({ override: false }); // also try CWD .env (dev / docker-compose)
 
-// ── 2. Build DATABASE_URL from individual POSTGRES_* vars if not already set ──
-// Dublyo injects individual vars from linked services (not a single DATABASE_URL).
+// Build DATABASE_URL from POSTGRES_* vars if injected by platform
 if (!process.env.DATABASE_URL && process.env.POSTGRES_PASSWORD) {
-  const user     = process.env.POSTGRES_USER      ?? "postgres";
+  const user     = process.env.POSTGRES_USER     ?? "postgres";
   const password = encodeURIComponent(process.env.POSTGRES_PASSWORD);
-  const host     = process.env.POSTGRES_HOST      ??
-                   process.env.POSTGRES_HOSTNAME  ??
-                   process.env.PGHOST             ??
-                   process.env.DB_HOST            ??
-                   process.env.POSTGRES_SERVICE_HOST ??
-                   // Known Dublyo PostgreSQL hostname from project config
+  const host     = process.env.POSTGRES_HOST     ??
+                   process.env.POSTGRES_HOSTNAME ??
+                   process.env.PGHOST            ??
+                   process.env.DB_HOST           ??
                    "legalcrm-c74fa891.dublyo.co";
-  const port     = process.env.POSTGRES_PORT      ?? "5432";
-  const db       = process.env.POSTGRES_DB        ?? "postgres";
+  const port     = process.env.POSTGRES_PORT     ?? "5432";
+  const db       = process.env.POSTGRES_DB       ?? "app";
   process.env.DATABASE_URL = `postgresql://${user}:${password}@${host}:${port}/${db}?sslmode=require`;
-  console.log(`[Server] DATABASE_URL constructed from POSTGRES_* vars (host: ${host})`);
 }
 
 import express from "express";
@@ -74,12 +51,6 @@ async function startServer() {
   console.log("[Server] NODE_ENV:", process.env.NODE_ENV ?? "(not set)");
   console.log("[Server] DATABASE_URL:", process.env.DATABASE_URL ? "SET ✓" : "NOT SET ✗");
   console.log("[Server] JWT_SECRET:", process.env.JWT_SECRET ? "SET ✓" : "NOT SET ✗");
-  // Log all POSTGRES_* vars so we can see what Dublyo injects
-  const pgVars = ["POSTGRES_USER","POSTGRES_HOST","POSTGRES_HOSTNAME","PGHOST",
-                  "POSTGRES_DB","POSTGRES_PORT","POSTGRES_PASSWORD","DB_HOST"];
-  for (const k of pgVars) {
-    if (process.env[k]) console.log(`[Server] ${k}:`, k.includes("PASSWORD") ? "SET ✓" : process.env[k]);
-  }
 
   const app = express();
   const server = createServer(app);
