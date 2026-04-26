@@ -3,18 +3,13 @@ import fs from "fs";
 import { type Server } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
-import { createServer as createViteServer } from "vite";
-import viteConfig from "../../vite.config";
+// vite and vite.config are NOT imported at the top level — they are devDependencies
+// and must only be loaded in development mode via dynamic import inside setupVite.
 
-// Resolve the project root reliably regardless of whether the code is compiled
-// or run via tsx. __filename works in both ESM (node --experimental-vm-modules)
-// and esbuild-bundled ESM.
 function getProjectRoot(): string {
   try {
-    // Works in compiled dist/index.js (dist/ → project root with "../")
     const thisDir = path.dirname(fileURLToPath(import.meta.url));
     // When bundled by esbuild: thisDir = <root>/dist
-    // When run via tsx: thisDir = <root>/server/_core
     if (thisDir.endsWith("dist")) {
       return path.resolve(thisDir, "..");
     }
@@ -26,9 +21,14 @@ function getProjectRoot(): string {
 }
 
 export async function setupVite(app: Express, server: Server) {
+  // Dynamic import so vite is never required as a production dependency.
+  // This function is only called when NODE_ENV=development.
+  const { createServer: createViteServer } = await import("vite");
+
   const vite = await createViteServer({
-    ...viteConfig,
-    configFile: false,
+    // configFile:true lets Vite read vite.config.ts from cwd automatically,
+    // so we don't need to import vite.config here.
+    configFile: true,
     server: {
       middlewareMode: true,
       hmr: { server },
