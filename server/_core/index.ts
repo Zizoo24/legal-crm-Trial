@@ -11,16 +11,19 @@ for (const p of envCandidates) {
 
 // Build DATABASE_URL from POSTGRES_* vars if injected by platform
 if (!process.env.DATABASE_URL && process.env.POSTGRES_PASSWORD) {
-  const user     = process.env.POSTGRES_USER     ?? "postgres";
-  const password = encodeURIComponent(process.env.POSTGRES_PASSWORD);
-  const host     = process.env.POSTGRES_HOST     ??
-                   process.env.POSTGRES_HOSTNAME ??
-                   process.env.PGHOST            ??
-                   process.env.DB_HOST           ??
-                   "legalcrm-c74fa891.dublyo.co";
-  const port     = process.env.POSTGRES_PORT     ?? "5432";
-  const db       = process.env.POSTGRES_DB       ?? "app";
-  process.env.DATABASE_URL = `postgresql://${user}:${password}@${host}:${port}/${db}?sslmode=require`;
+  const user         = process.env.POSTGRES_USER ?? "postgres";
+  const password     = encodeURIComponent(process.env.POSTGRES_PASSWORD);
+  const explicitHost = process.env.POSTGRES_HOST     ??
+                       process.env.POSTGRES_HOSTNAME ??
+                       process.env.PGHOST            ??
+                       process.env.DB_HOST;
+  const host         = explicitHost ?? "legalcrm-c74fa891.dublyo.co";
+  const port         = process.env.POSTGRES_PORT ?? "5432";
+  const db           = process.env.POSTGRES_DB   ?? "app";
+  // Only require SSL for the external Dublyo hostname; injected internal hosts typically have no SSL.
+  const sslParam     = explicitHost ? "" : "?sslmode=require";
+  process.env.DATABASE_URL = `postgresql://${user}:${password}@${host}:${port}/${db}${sslParam}`;
+  console.log(`[Server] DATABASE_URL built from POSTGRES_* vars — host: ${host}, ssl: ${!explicitHost}`);
 }
 
 import express from "express";
