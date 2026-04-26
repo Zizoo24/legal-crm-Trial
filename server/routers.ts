@@ -18,7 +18,16 @@ export const appRouter = router({
         password: z.string().min(1),
       }))
       .mutation(async ({ input, ctx }) => {
-        const user = await db.getUserByEmail(input.email);
+        let user: Awaited<ReturnType<typeof db.getUserByEmail>>;
+        try {
+          user = await db.getUserByEmail(input.email);
+        } catch (err: any) {
+          const msg = (err?.message ?? "") as string;
+          if (msg.includes("DATABASE_URL") || msg.includes("connect") || msg.includes("ECONNREFUSED")) {
+            throw new Error("Database connection failed — please check server configuration");
+          }
+          throw err;
+        }
         if (!user || !user.passwordHash) {
           throw new Error("Invalid email or password");
         }
