@@ -1,6 +1,8 @@
-import { and, count, desc, eq, gte, lte, sql, isNull, ne } from "drizzle-orm";
+import { and, count, desc, eq, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import fs from "fs";
+import path from "path";
 import {
   users, companies, leads, matters, tasks, notes, payments,
   activityLogs, auditLogs, chatSubmissions,
@@ -21,10 +23,53 @@ export function getDb() {
     if (!url) {
       throw new Error("DATABASE_URL environment variable is required");
     }
-    _client = postgres(url, { max: 10 });
+    _client = postgres(url, { max: 10, ssl: url.includes("sslmode=require") ? "require" : false });
     _db = drizzle(_client);
   }
   return _db;
+}
+
+export function getRawClient() {
+  getDb(); // ensure _client is created
+  return _client!;
+}
+
+// ─── Auto Migration ───────────────────────────────────────────────────────────
+
+export async function runMigrations() {
+  const client = getRawClient();
+  // Try several possible locations for the migration file
+  const candidates = [
+    path.resolve(process.cwd(), "drizzle/migrations/0000_initial_schema.sql"),
+    path.resolve(process.cwd(), "drizzle", "migrations", "0000_initial_schema.sql"),
+    path.resolve(import.meta.dirname ?? __dirname, "../../drizzle/migrations/0000_initial_schema.sql"),
+  ];
+
+  let sqlContent: string | null = null;
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      sqlContent = fs.readFileSync(candidate, "utf-8");
+      console.log(`[DB] Running migration from: ${candidate}`);
+      break;
+    }
+  }
+
+  if (!sqlContent) {
+    console.warn("[DB] Migration file not found — skipping (tables may already exist)");
+    return;
+  }
+
+  try {
+    await client.unsafe(sqlContent);
+    console.log("[DB] Migration applied successfully");
+  } catch (err: any) {
+    // Ignore "already exists" errors — migration is idempotent
+    if (err?.message?.includes("already exists")) {
+      console.log("[DB] Tables already exist — migration skipped");
+    } else {
+      throw err;
+    }
+  }
 }
 
 // ─── Users ────────────────────────────────────────────────────────────────────

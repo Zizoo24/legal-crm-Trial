@@ -6,7 +6,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { ensureAdminExists } from "../db";
+import { ensureAdminExists, runMigrations } from "../db";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -45,11 +45,12 @@ async function startServer() {
     serveStatic(app);
   }
 
-  // Seed default admin on first boot
+  // Run DB migrations then seed admin on first boot
   try {
+    await runMigrations();
     await ensureAdminExists();
   } catch (err) {
-    console.warn("[Server] Could not seed admin (DB may not be connected yet):", (err as Error).message);
+    console.warn("[Server] DB setup warning:", (err as Error).message);
   }
 
   const preferredPort = parseInt(process.env.PORT || "3000", 10);
