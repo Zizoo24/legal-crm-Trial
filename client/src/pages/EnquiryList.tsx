@@ -62,8 +62,8 @@ const statusOptions = [
 const urgencyOptions = ["Low", "Medium", "High", "Critical"];
 
 export default function EnquiryList() {
-  const { data: enquiries, isLoading, refetch } = trpc.enquiries.list.useQuery();
-  const deleteEnquiryMutation = trpc.enquiries.delete.useMutation({
+  const { data: enquiries, isLoading, refetch } = trpc.leads.list.useQuery();
+  const deleteEnquiryMutation = trpc.leads.delete.useMutation({
     onSuccess: () => {
       toast.success("Enquiry deleted successfully");
       refetch();
@@ -134,7 +134,7 @@ export default function EnquiryList() {
         const query = searchQuery.toLowerCase();
         return (
           enquiry.clientName?.toLowerCase().includes(query) ||
-          enquiry.enquiryId?.toLowerCase().includes(query) ||
+          enquiry.leadCode?.toLowerCase().includes(query) ||
           enquiry.email?.toLowerCase().includes(query) ||
           enquiry.phoneNumber?.toLowerCase().includes(query)
         );
@@ -178,7 +178,7 @@ export default function EnquiryList() {
     }
 
     const exportData = filteredEnquiries.map(e => ({
-      "Enquiry ID": e.enquiryId,
+      "Enquiry ID": e.leadCode,
       "Date": e.dateOfEnquiry,
       "Client Name": e.clientName,
       "Email": e.email || "",
@@ -432,10 +432,10 @@ export default function EnquiryList() {
                           <Checkbox
                             checked={selectedIds.includes(enquiry.id)}
                             onCheckedChange={(checked) => handleSelectOne(enquiry.id, checked as boolean)}
-                            aria-label={`Select ${enquiry.enquiryId}`}
+                            aria-label={`Select ${enquiry.leadCode}`}
                           />
                         </TableCell>
-                        <TableCell className="font-medium">{enquiry.enquiryId}</TableCell>
+                        <TableCell className="font-medium">{enquiry.leadCode}</TableCell>
                         <TableCell>{new Date(enquiry.dateOfEnquiry).toLocaleDateString()}</TableCell>
                         <TableCell>{enquiry.clientName}</TableCell>
                         <TableCell>{enquiry.serviceRequested || "N/A"}</TableCell>

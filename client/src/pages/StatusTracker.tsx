@@ -4,7 +4,7 @@ import { Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
 export default function StatusTracker() {
-  const { data: summary, isLoading } = trpc.enquiries.statusSummary.useQuery();
+  const { data: summary, isLoading } = trpc.leads.statusSummary.useQuery();
 
   if (isLoading) {
     return (

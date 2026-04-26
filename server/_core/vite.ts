@@ -1,43 +1,50 @@
 import express, { type Express } from "express";
 import fs from "fs";
 import { type Server } from "http";
-import { nanoid } from "nanoid";
 import path from "path";
+import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import viteConfig from "../../vite.config";
 
-export async function setupVite(app: Express, server: Server) {
-  const serverOptions = {
-    middlewareMode: true,
-    hmr: { server },
-    allowedHosts: true as const,
-  };
+// Resolve the project root reliably regardless of whether the code is compiled
+// or run via tsx. __filename works in both ESM (node --experimental-vm-modules)
+// and esbuild-bundled ESM.
+function getProjectRoot(): string {
+  try {
+    // Works in compiled dist/index.js (dist/ → project root with "../")
+    const thisDir = path.dirname(fileURLToPath(import.meta.url));
+    // When bundled by esbuild: thisDir = <root>/dist
+    // When run via tsx: thisDir = <root>/server/_core
+    if (thisDir.endsWith("dist")) {
+      return path.resolve(thisDir, "..");
+    }
+    // tsx source mode: go up two levels from server/_core
+    return path.resolve(thisDir, "../..");
+  } catch {
+    return process.cwd();
+  }
+}
 
+export async function setupVite(app: Express, server: Server) {
   const vite = await createViteServer({
     ...viteConfig,
     configFile: false,
-    server: serverOptions,
+    server: {
+      middlewareMode: true,
+      hmr: { server },
+      allowedHosts: true as const,
+    },
     appType: "custom",
   });
 
   app.use(vite.middlewares);
+
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
-
     try {
-      const clientTemplate = path.resolve(
-        import.meta.dirname,
-        "../..",
-        "client",
-        "index.html"
-      );
-
-      // always reload the index.html file from disk incase it changes
+      const root = getProjectRoot();
+      const clientTemplate = path.resolve(root, "client", "index.html");
       let template = await fs.promises.readFile(clientTemplate, "utf-8");
-      template = template.replace(
-        `src="/src/main.tsx"`,
-        `src="/src/main.tsx?v=${nanoid()}"`
-      );
       const page = await vite.transformIndexHtml(url, template);
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
     } catch (e) {
@@ -48,20 +55,27 @@ export async function setupVite(app: Express, server: Server) {
 }
 
 export function serveStatic(app: Express) {
-  const distPath =
-    process.env.NODE_ENV === "development"
-      ? path.resolve(import.meta.dirname, "../..", "dist", "public")
-      : path.resolve(import.meta.dirname, "public");
+  const root = getProjectRoot();
+  const distPath = path.resolve(root, "dist", "public");
+
   if (!fs.existsSync(distPath)) {
     console.error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`
+      `[Server] Build directory not found: ${distPath}\n` +
+      `         Run 'pnpm build' before starting in production mode.`
     );
+  } else {
+    console.log(`[Server] Serving static files from: ${distPath}`);
   }
 
-  app.use(express.static(distPath));
+  app.use(express.static(distPath, { maxAge: "1d", etag: true }));
 
-  // fall through to index.html if the file doesn't exist
+  // SPA fallback — all unknown paths serve index.html so client-side routing works
   app.use("*", (_req, res) => {
-    res.sendFile(path.resolve(distPath, "index.html"));
+    const indexPath = path.resolve(distPath, "index.html");
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(503).send("Application not built. Run pnpm build first.");
+    }
   });
 }

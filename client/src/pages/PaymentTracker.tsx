@@ -30,7 +30,7 @@ export default function PaymentTracker() {
   });
 
   const utils = trpc.useUtils();
-  const { data: enquiries, isLoading: loadingEnquiries } = trpc.enquiries.list.useQuery();
+  const { data: enquiries, isLoading: loadingEnquiries } = trpc.leads.list.useQuery();
   const { data: payments, isLoading: loadingPayments } = trpc.payments.list.useQuery();
 
   const createPaymentMutation = trpc.payments.create.useMutation({
@@ -74,9 +74,9 @@ export default function PaymentTracker() {
     });
   };
 
-  const handleCreatePayment = (enquiryId: number, matterCode: string) => {
-    setSelectedEnquiry(enquiryId);
-    const existingPayment = payments?.find(p => p.enquiryId === enquiryId);
+  const handleCreatePayment = (leadId: number, matterCode: string) => {
+    setSelectedEnquiry(leadId);
+    const existingPayment = payments?.find(p => p.leadId === leadId);
     if (existingPayment) {
       setPaymentData({
         paymentStatus: existingPayment.paymentStatus || "Not Started",
@@ -104,7 +104,7 @@ export default function PaymentTracker() {
       return;
     }
 
-    const existingPayment = payments?.find(p => p.enquiryId === selectedEnquiry);
+    const existingPayment = payments?.find(p => p.leadId === selectedEnquiry);
 
     if (existingPayment) {
       updatePaymentMutation.mutate({
@@ -113,7 +113,7 @@ export default function PaymentTracker() {
       });
     } else {
       createPaymentMutation.mutate({
-        enquiryId: selectedEnquiry,
+        leadId: selectedEnquiry,
         matterCode: enquiry.matterCode,
         ...paymentData,
       });
@@ -198,7 +198,7 @@ export default function PaymentTracker() {
               <AlertCircle className="h-5 w-5 text-gray-600" />
             </div>
             <CardTitle className="text-3xl text-gray-600">
-              {convertedEnquiries.filter(e => !payments?.find(p => p.enquiryId === e.id)).length}
+              {convertedEnquiries.filter(e => !payments?.find(p => p.leadId === e.id)).length}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -234,7 +234,7 @@ export default function PaymentTracker() {
                 </TableHeader>
                 <TableBody>
                   {convertedEnquiries.map((enquiry) => {
-                    const payment = payments?.find(p => p.enquiryId === enquiry.id);
+                    const payment = payments?.find(p => p.leadId === enquiry.id);
                     return (
                       <TableRow key={enquiry.id}>
                         <TableCell className="font-mono text-sm">{enquiry.matterCode}</TableCell>

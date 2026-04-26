@@ -86,7 +86,8 @@ export default function UserManagement() {
     }
   };
 
-  const formatDate = (date: Date | string) => {
+  const formatDate = (date: Date | string | null | undefined) => {
+    if (!date) return '-';
     return new Date(date).toLocaleDateString("en-US", {
       year: "numeric",
       month: "short",
@@ -196,7 +197,7 @@ export default function UserManagement() {
                       <TableCell>{getRoleBadge(user.role)}</TableCell>
                       <TableCell>{getStatusBadge(user.status)}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {formatDate(user.lastSignedIn)}
+                        {formatDate(user.lastLoginAt ?? undefined)}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {formatDate(user.createdAt)}

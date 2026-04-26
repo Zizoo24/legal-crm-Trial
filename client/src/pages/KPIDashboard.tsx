@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Loader2, TrendingUp, Users, DollarSign, Target, Clock, CheckCircle } from "lucide-react";
 
 export default function KPIDashboard() {
-  const { data: metrics, isLoading } = trpc.enquiries.kpiMetrics.useQuery();
+  const { data: metrics, isLoading } = trpc.leads.kpiMetrics.useQuery();
 
   if (isLoading) {
     return (
@@ -16,7 +16,7 @@ export default function KPIDashboard() {
   const kpiCards = [
     {
       title: "Total Enquiries",
-      value: metrics?.totalEnquiries || 0,
+      value: metrics?.totalLeads || 0,
       description: "All time",
       icon: Users,
       color: "text-blue-600",
@@ -24,7 +24,7 @@ export default function KPIDashboard() {
     },
     {
       title: "This Month",
-      value: metrics?.thisMonthEnquiries || 0,
+      value: metrics?.newLeads || 0,
       description: "Current month enquiries",
       icon: Clock,
       color: "text-purple-600",
@@ -32,7 +32,7 @@ export default function KPIDashboard() {
     },
     {
       title: "Converted",
-      value: metrics?.convertedEnquiries || 0,
+      value: metrics?.convertedLeads || 0,
       description: "Successfully closed",
       icon: CheckCircle,
       color: "text-green-600",
@@ -56,8 +56,8 @@ export default function KPIDashboard() {
     },
     {
       title: "Avg. Value",
-      value: metrics?.convertedEnquiries && metrics.convertedEnquiries > 0
-        ? `${((metrics?.totalRevenue || 0) / metrics.convertedEnquiries).toLocaleString(undefined, { maximumFractionDigits: 0 })} SAR`
+      value: metrics?.convertedLeads && metrics.convertedLeads > 0
+        ? `${((metrics?.totalRevenue || 0) / metrics.convertedLeads).toLocaleString(undefined, { maximumFractionDigits: 0 })} SAR`
         : "0 SAR",
       description: "Per converted enquiry",
       icon: TrendingUp,
@@ -104,32 +104,32 @@ export default function KPIDashboard() {
             <div className="space-y-2">
               <h4 className="font-semibold text-gray-900">Enquiry Volume</h4>
               <p className="text-sm text-gray-600">
-                You have received <strong>{metrics?.totalEnquiries || 0}</strong> total enquiries, 
-                with <strong>{metrics?.thisMonthEnquiries || 0}</strong> coming in this month.
+                You have received <strong>{metrics?.totalLeads || 0}</strong> total enquiries, 
+                with <strong>{metrics?.newLeads || 0}</strong> coming in this month.
               </p>
             </div>
             <div className="space-y-2">
               <h4 className="font-semibold text-gray-900">Conversion Performance</h4>
               <p className="text-sm text-gray-600">
                 Your conversion rate is <strong>{metrics?.conversionRate.toFixed(1) || 0}%</strong>, 
-                with <strong>{metrics?.convertedEnquiries || 0}</strong> successfully converted enquiries.
+                with <strong>{metrics?.convertedLeads || 0}</strong> successfully converted enquiries.
               </p>
             </div>
             <div className="space-y-2">
               <h4 className="font-semibold text-gray-900">Revenue Generated</h4>
               <p className="text-sm text-gray-600">
                 Total revenue from converted enquiries is <strong>{(metrics?.totalRevenue || 0).toLocaleString()} SAR</strong>, 
-                averaging {metrics?.convertedEnquiries && metrics.convertedEnquiries > 0
-                  ? <strong>{((metrics?.totalRevenue || 0) / metrics.convertedEnquiries).toLocaleString(undefined, { maximumFractionDigits: 0 })} SAR</strong>
+                averaging {metrics?.convertedLeads && metrics.convertedLeads > 0
+                  ? <strong>{((metrics?.totalRevenue || 0) / metrics.convertedLeads).toLocaleString(undefined, { maximumFractionDigits: 0 })} SAR</strong>
                   : <strong>0 SAR</strong>} per conversion.
               </p>
             </div>
             <div className="space-y-2">
               <h4 className="font-semibold text-gray-900">Growth Opportunity</h4>
               <p className="text-sm text-gray-600">
-                {metrics && metrics.totalEnquiries > 0 && metrics.conversionRate < 50 ? (
+                {metrics && metrics.totalLeads > 0 && metrics.conversionRate < 50 ? (
                   <>
-                    There are <strong>{metrics.totalEnquiries - metrics.convertedEnquiries}</strong> enquiries 
+                    There are <strong>{metrics.totalLeads - metrics.convertedLeads}</strong> enquiries 
                     that could potentially be converted with proper follow-up.
                   </>
                 ) : (

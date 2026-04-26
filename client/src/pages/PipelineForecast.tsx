@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 
 export default function PipelineForecast() {
-  const { data: forecast, isLoading } = trpc.enquiries.pipelineForecast.useQuery();
+  const { data: forecast, isLoading } = trpc.leads.pipelineForecast.useQuery();
 
   if (isLoading) {
     return (
