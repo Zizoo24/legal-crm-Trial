@@ -11,6 +11,8 @@ RUN pnpm install --frozen-lockfile
 
 # Copy source and build
 COPY . .
+# Ensure .env always exists (Dublyo may inject it into build context; touch is a no-op if it does)
+RUN touch .env
 RUN pnpm build
 
 # ── Stage 2: Production runtime ──────────────────────────────────────────────
@@ -31,6 +33,9 @@ COPY --from=builder /app/dist ./dist
 
 # Copy DB migration SQL (read at runtime by runMigrations())
 COPY --from=builder /app/drizzle ./drizzle
+
+# Copy .env from builder (Dublyo writes App Settings env vars here at build time)
+COPY --from=builder /app/.env ./.env
 
 EXPOSE 3000
 
