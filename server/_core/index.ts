@@ -1,9 +1,25 @@
 import { config as loadDotenv } from "dotenv";
 import fs from "fs";
 
+// ── 0. Diagnostics: list /assets/ so we can see what Dublyo mounts ────────────
+try {
+  if (fs.existsSync("/assets")) {
+    const entries = fs.readdirSync("/assets");
+    console.log("[Server] /assets/ contents:", entries.length ? entries.join(", ") : "(empty)");
+  } else {
+    console.log("[Server] /assets/ does not exist");
+  }
+} catch (e) {
+  console.log("[Server] /assets/ read error:", (e as Error).message);
+}
+
+// ── 0b. Dump all env var KEY names (not values) so we can see what's injected ─
+const allKeys = Object.keys(process.env).filter(k => !k.startsWith("npm_")).sort();
+console.log("[Server] process.env keys:", allKeys.join(", "));
+
 // ── 1. Load env files from known platform locations ───────────────────────────
 // Dublyo stores platform config under /assets/ (same dir as /assets/Caddyfile)
-const envCandidates = ["/assets/.env", "/assets/env", "/.env", ".env"];
+const envCandidates = ["/assets/.env", "/assets/env", "/assets/app.env", "/run/secrets/.env", "/.env", ".env"];
 for (const p of envCandidates) {
   if (fs.existsSync(p)) {
     loadDotenv({ path: p, override: false });
