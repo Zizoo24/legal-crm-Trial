@@ -17,7 +17,7 @@ if (!process.env.DATABASE_URL && process.env.POSTGRES_PASSWORD) {
                        process.env.POSTGRES_HOSTNAME ??
                        process.env.PGHOST            ??
                        process.env.DB_HOST;
-  const host         = explicitHost ?? "legalcrm-c74fa891.dublyo.co";
+  const host         = explicitHost ?? "legal-crm1-4279634f.dublyo.co";
   const port         = process.env.POSTGRES_PORT ?? "5432";
   const db           = process.env.POSTGRES_DB   ?? "app";
   // Only require SSL for the external Dublyo hostname; injected internal hosts typically have no SSL.
