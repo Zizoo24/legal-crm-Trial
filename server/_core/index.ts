@@ -32,7 +32,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { ensureAdminExists, runMigrations } from "../db";
+import { ensureAdminExists, getRawClient, runMigrations } from "../db";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -63,14 +63,40 @@ async function startServer() {
 
   app.get("/health", (_req, res) => {
     const databaseUrl = process.env.DATABASE_URL ?? "";
+    let databaseHost: string | null = null;
+    let databasePort: string | null = null;
+    try {
+      const parsed = new URL(databaseUrl);
+      databaseHost = parsed.hostname;
+      databasePort = parsed.port || null;
+    } catch {
+      // Keep health endpoint available even if DATABASE_URL is malformed.
+    }
     res.json({
       ok: true,
       ts: Date.now(),
       release: process.env.APP_RELEASE ?? "unknown",
       databaseUrlSet: Boolean(databaseUrl),
       databaseUrlHasSslMode: databaseUrl.includes("sslmode="),
+      databaseHost,
+      databasePort,
       jwtSecretSet: Boolean(process.env.JWT_SECRET),
     });
+  });
+
+  app.get("/health/db", async (_req, res) => {
+    try {
+      await getRawClient().unsafe("select 1");
+      res.json({ ok: true, ts: Date.now() });
+    } catch (err: any) {
+      res.status(503).json({
+        ok: false,
+        ts: Date.now(),
+        error: err?.message ?? String(err),
+        cause: err?.cause?.message ?? null,
+        code: err?.code ?? err?.cause?.code ?? null,
+      });
+    }
   });
 
   app.use(
