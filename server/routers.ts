@@ -47,13 +47,20 @@ export const appRouter = router({
 
         await db.updateLastLogin(user.id);
         const token = await createSessionToken(user.id, user.email);
+        const secureCookie = isSecureRequest(ctx.req);
 
         ctx.res.cookie(AUTH_COOKIE, token, {
           httpOnly: true,
           path: "/",
           sameSite: "lax",
-          secure: isSecureRequest(ctx.req),
+          secure: secureCookie,
           maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+        });
+        console.log("[Auth] Login success:", {
+          email: user.email,
+          secureCookie,
+          protocol: ctx.req.protocol,
+          forwardedProto: ctx.req.headers["x-forwarded-proto"] ?? null,
         });
 
         const { passwordHash: _ph, ...safeUser } = user;
