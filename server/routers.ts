@@ -68,7 +68,12 @@ export const appRouter = router({
       }),
 
     logout: publicProcedure.mutation(({ ctx }) => {
-      ctx.res.clearCookie(AUTH_COOKIE, { path: "/" });
+      ctx.res.clearCookie(AUTH_COOKIE, {
+        httpOnly: true,
+        path: "/",
+        sameSite: "lax",
+        secure: isSecureRequest(ctx.req),
+      });
       return { success: true };
     }),
   }),
