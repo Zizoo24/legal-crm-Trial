@@ -35,6 +35,25 @@ function shouldDisablePreparedStatements(databaseUrl: string) {
   }
 }
 
+const leadStatusAliases: Record<string, string> = {
+  Pending: "New",
+  Declined: "Lost",
+  Conflict: "On Hold",
+  "Not Pursued": "Lost",
+};
+
+function sanitizeLeadInput(data: Record<string, unknown>) {
+  const sanitized = Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== "")
+  ) as Record<string, unknown>;
+
+  if (typeof sanitized.currentStatus === "string") {
+    sanitized.currentStatus = leadStatusAliases[sanitized.currentStatus] ?? sanitized.currentStatus;
+  }
+
+  return sanitized;
+}
+
 export function getDb() {
   if (!_db) {
     const url = process.env.DATABASE_URL;
@@ -213,10 +232,11 @@ export async function getLeadById(id: number) {
 export async function createLead(data: Record<string, unknown>, userId: number) {
   const db = getDb();
   const leadCode = await generateLeadCode();
+  const sanitized = sanitizeLeadInput(data);
 
   const [lead] = await db
     .insert(leads)
-    .values({ ...(data as InsertLead), leadCode, createdBy: userId })
+    .values({ ...(sanitized as InsertLead), leadCode, createdBy: userId })
     .returning();
 
   await logActivity({
@@ -232,9 +252,10 @@ export async function createLead(data: Record<string, unknown>, userId: number) 
 
 export async function updateLead(id: number, data: Record<string, unknown>) {
   const db = getDb();
+  const sanitized = sanitizeLeadInput(data);
   const [lead] = await db
     .update(leads)
-    .set({ ...(data as Partial<InsertLead>), updatedAt: new Date() })
+    .set({ ...(sanitized as Partial<InsertLead>), updatedAt: new Date() })
     .where(eq(leads.id, id))
     .returning();
   return lead;

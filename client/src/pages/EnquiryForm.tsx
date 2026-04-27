@@ -88,7 +88,7 @@ export default function EnquiryForm({ id }: EnquiryFormProps) {
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
     defaultValues: {
-      currentStatus: "Pending",
+      currentStatus: "New",
       urgencyLevel: "Medium",
     }
   });
@@ -362,14 +362,13 @@ export default function EnquiryForm({ id }: EnquiryFormProps) {
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Pending">Pending</SelectItem>
+                  <SelectItem value="New">New</SelectItem>
                   <SelectItem value="Contacted">Contacted</SelectItem>
                   <SelectItem value="Meeting Scheduled">Meeting Scheduled</SelectItem>
                   <SelectItem value="Proposal Sent">Proposal Sent</SelectItem>
                   <SelectItem value="Converted">Converted</SelectItem>
-                  <SelectItem value="Declined">Declined</SelectItem>
-                  <SelectItem value="Conflict">Conflict</SelectItem>
-                  <SelectItem value="Not Pursued">Not Pursued</SelectItem>
+                  <SelectItem value="Lost">Lost</SelectItem>
+                  <SelectItem value="On Hold">On Hold</SelectItem>
                 </SelectContent>
               </Select>
             </div>
