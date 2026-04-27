@@ -18,6 +18,7 @@ import PipelineForecast from "@/pages/PipelineForecast";
 import UserManagement from "@/pages/UserManagement";
 import MatterList from "@/pages/MatterList";
 import TaskList from "@/pages/TaskList";
+import TaskForm from "@/pages/TaskForm";
 import DashboardLayout from "./components/DashboardLayout";
 
 function Router() {
@@ -80,6 +81,9 @@ function Router() {
       </Route>
 
       {/* Tasks */}
+      <Route path="/tasks/new">
+        <ProtectedRoute><TaskForm /></ProtectedRoute>
+      </Route>
       <Route path="/tasks">
         <ProtectedRoute><TaskList /></ProtectedRoute>
       </Route>

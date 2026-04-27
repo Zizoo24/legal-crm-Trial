@@ -26,13 +26,10 @@ export async function setupVite(app: Express, server: Server) {
   const { createServer: createViteServer } = await import("vite");
 
   const vite = await createViteServer({
-    // configFile:true lets Vite read vite.config.ts from cwd automatically,
-    // so we don't need to import vite.config here.
-    configFile: true,
+    // Vite reads vite.config.ts from cwd automatically, so we don't import it here.
     server: {
       middlewareMode: true,
       hmr: { server },
-      allowedHosts: true as const,
     },
     appType: "custom",
   });

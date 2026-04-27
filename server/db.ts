@@ -54,6 +54,12 @@ function sanitizeLeadInput(data: Record<string, unknown>) {
   return sanitized;
 }
 
+function sanitizeOptionalInput(data: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== "")
+  ) as Record<string, unknown>;
+}
+
 export function getDb() {
   if (!_db) {
     const url = process.env.DATABASE_URL;
@@ -253,6 +259,12 @@ export async function createLead(data: Record<string, unknown>, userId: number) 
 export async function updateLead(id: number, data: Record<string, unknown>) {
   const db = getDb();
   const sanitized = sanitizeLeadInput(data);
+  if ((sanitized.currentStatus === "Converted" || sanitized.conversionDate) && !sanitized.matterCode) {
+    const existing = await getLeadById(id);
+    if (!existing?.matterCode) {
+      sanitized.matterCode = await generateMatterCode();
+    }
+  }
   const [lead] = await db
     .update(leads)
     .set({ ...(sanitized as Partial<InsertLead>), updatedAt: new Date() })
@@ -388,10 +400,11 @@ export async function getMatterById(id: number) {
 export async function createMatter(data: Record<string, unknown>, userId: number) {
   const db = getDb();
   const matterCode = await generateMatterCode();
+  const sanitized = sanitizeOptionalInput(data);
 
   const [matter] = await db
     .insert(matters)
-    .values({ ...(data as InsertMatter), matterCode, createdBy: userId })
+    .values({ ...(sanitized as InsertMatter), matterCode, createdBy: userId })
     .returning();
 
   await logActivity({
@@ -407,9 +420,10 @@ export async function createMatter(data: Record<string, unknown>, userId: number
 
 export async function updateMatter(id: number, data: Record<string, unknown>) {
   const db = getDb();
+  const sanitized = sanitizeOptionalInput(data);
   const [matter] = await db
     .update(matters)
-    .set({ ...(data as Partial<InsertMatter>), updatedAt: new Date() })
+    .set({ ...(sanitized as Partial<InsertMatter>), updatedAt: new Date() })
     .where(eq(matters.id, id))
     .returning();
   return matter;
@@ -444,19 +458,21 @@ export async function getTaskById(id: number) {
 
 export async function createTask(data: Record<string, unknown>, userId: number) {
   const db = getDb();
+  const sanitized = sanitizeOptionalInput(data);
   const [task] = await db
     .insert(tasks)
-    .values({ ...(data as InsertTask), createdBy: userId })
+    .values({ ...(sanitized as InsertTask), createdBy: userId })
     .returning();
   return task;
 }
 
 export async function updateTask(id: number, data: Record<string, unknown>) {
   const db = getDb();
-  const completedAt = data.status === "done" ? new Date() : undefined;
+  const sanitized = sanitizeOptionalInput(data);
+  const completedAt = sanitized.status === "done" ? new Date() : undefined;
   const [task] = await db
     .update(tasks)
-    .set({ ...(data as Partial<InsertTask>), updatedAt: new Date(), ...(completedAt ? { completedAt } : {}) })
+    .set({ ...(sanitized as Partial<InsertTask>), updatedAt: new Date(), ...(completedAt ? { completedAt } : {}) })
     .where(eq(tasks.id, id))
     .returning();
   return task;
@@ -510,15 +526,17 @@ export async function getPaymentById(id: number) {
 
 export async function createPayment(data: Record<string, unknown>) {
   const db = getDb();
-  const [payment] = await db.insert(payments).values(data as InsertPayment).returning();
+  const sanitized = sanitizeOptionalInput(data);
+  const [payment] = await db.insert(payments).values(sanitized as InsertPayment).returning();
   return payment;
 }
 
 export async function updatePayment(id: number, data: Record<string, unknown>) {
   const db = getDb();
+  const sanitized = sanitizeOptionalInput(data);
   const [payment] = await db
     .update(payments)
-    .set({ ...(data as Partial<InsertPayment>), updatedAt: new Date() })
+    .set({ ...(sanitized as Partial<InsertPayment>), updatedAt: new Date() })
     .where(eq(payments.id, id))
     .returning();
   return payment;
