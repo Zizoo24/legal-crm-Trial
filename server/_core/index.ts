@@ -1,16 +1,10 @@
 import { config as loadDotenv } from "dotenv";
 import fs from "fs";
 
-// Diagnostic: show all env var keys present at container start
-console.log("[Env] Keys at startup:", Object.keys(process.env).sort().join(", "));
-console.log("[Env] DATABASE_URL raw:", process.env.DATABASE_URL ?? "(undefined)");
-console.log("[Env] JWT_SECRET raw:", process.env.JWT_SECRET ? "(set)" : "(undefined)");
-
 // Load any supplementary .env files (local dev, mounted volumes, etc.)
 const envCandidates = ["/assets/.env", "/assets/env", "/.env", ".env"];
 for (const p of envCandidates) {
   if (fs.existsSync(p)) {
-    console.log(`[Env] Loading dotenv from: ${p}`);
     loadDotenv({ path: p, override: false });
   }
 }
@@ -26,8 +20,7 @@ if (!process.env.DATABASE_URL && process.env.POSTGRES_PASSWORD) {
   const host         = explicitHost ?? "legal-crm1-4279634f.dublyo.co";
   const port         = process.env.POSTGRES_PORT ?? "5432";
   const db           = process.env.POSTGRES_DB   ?? "app";
-  // Only require SSL for the external Dublyo hostname; injected internal hosts typically have no SSL.
-  const sslParam     = explicitHost ? "" : "?sslmode=require";
+  const sslParam     = "";
   process.env.DATABASE_URL = `postgresql://${user}:${password}@${host}:${port}/${db}${sslParam}`;
   console.log(`[Server] DATABASE_URL built from POSTGRES_* vars — host: ${host}, ssl: ${!explicitHost}`);
 }
