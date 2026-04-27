@@ -17,6 +17,15 @@ import { hashPassword } from "./_core/auth";
 let _client: ReturnType<typeof postgres> | null = null;
 let _db: ReturnType<typeof drizzle> | null = null;
 
+function shouldUseSsl(databaseUrl: string) {
+  try {
+    const parsed = new URL(databaseUrl);
+    return parsed.searchParams.get("sslmode") === "require" || parsed.hostname.endsWith(".supabase.co");
+  } catch {
+    return databaseUrl.includes("sslmode=require") || databaseUrl.includes(".supabase.co");
+  }
+}
+
 export function getDb() {
   if (!_db) {
     const url = process.env.DATABASE_URL;
@@ -25,7 +34,7 @@ export function getDb() {
     }
     _client = postgres(url, {
       max: 10,
-      ssl: false,
+      ssl: shouldUseSsl(url) ? "require" : false,
       connect_timeout: 10,
       idle_timeout: 30,
     });
