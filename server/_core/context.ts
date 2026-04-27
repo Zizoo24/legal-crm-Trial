@@ -16,6 +16,14 @@ export async function createContext(
 
   try {
     const token = getSessionFromRequest(opts.req);
+    if (!token && opts.req.path.includes("auth.me")) {
+      console.log("[Auth] auth.me without session cookie:", {
+        path: opts.req.path,
+        hasCookieHeader: Boolean(opts.req.headers.cookie),
+        protocol: opts.req.protocol,
+        forwardedProto: opts.req.headers["x-forwarded-proto"] ?? null,
+      });
+    }
     const session = await verifySessionToken(token);
 
     if (session?.userId) {
