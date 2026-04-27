@@ -51,6 +51,7 @@ async function findAvailablePort(startPort = 3000): Promise<number> {
 
 async function startServer() {
   console.log("[Server] NODE_ENV:", process.env.NODE_ENV ?? "(not set)");
+  console.log("[Server] APP_RELEASE:", process.env.APP_RELEASE ?? "(not set)");
   console.log("[Server] DATABASE_URL:", process.env.DATABASE_URL ? "SET ✓" : "NOT SET ✗");
   console.log("[Server] JWT_SECRET:", process.env.JWT_SECRET ? "SET ✓" : "NOT SET ✗");
 
@@ -60,7 +61,17 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  app.get("/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
+  app.get("/health", (_req, res) => {
+    const databaseUrl = process.env.DATABASE_URL ?? "";
+    res.json({
+      ok: true,
+      ts: Date.now(),
+      release: process.env.APP_RELEASE ?? "unknown",
+      databaseUrlSet: Boolean(databaseUrl),
+      databaseUrlHasSslMode: databaseUrl.includes("sslmode="),
+      jwtSecretSet: Boolean(process.env.JWT_SECRET),
+    });
+  });
 
   app.use(
     "/api/trpc",
