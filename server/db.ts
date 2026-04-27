@@ -25,8 +25,7 @@ export function getDb() {
     }
     _client = postgres(url, {
       max: 10,
-      // rejectUnauthorized:false handles self-signed certs on Dublyo's external endpoint
-      ssl: url.includes("sslmode=require") ? { rejectUnauthorized: false } : false,
+      ssl: false,
       connect_timeout: 10,
       idle_timeout: 30,
     });

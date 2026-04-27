@@ -20,8 +20,7 @@ if (!process.env.DATABASE_URL && process.env.POSTGRES_PASSWORD) {
   const host         = explicitHost ?? "legal-crm1-4279634f.dublyo.co";
   const port         = process.env.POSTGRES_PORT ?? "5432";
   const db           = process.env.POSTGRES_DB   ?? "app";
-  // Only require SSL for the external Dublyo hostname; injected internal hosts typically have no SSL.
-  const sslParam     = explicitHost ? "" : "?sslmode=require";
+  const sslParam     = "";
   process.env.DATABASE_URL = `postgresql://${user}:${password}@${host}:${port}/${db}${sslParam}`;
   console.log(`[Server] DATABASE_URL built from POSTGRES_* vars — host: ${host}, ssl: ${!explicitHost}`);
 }
