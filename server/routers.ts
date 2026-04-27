@@ -4,6 +4,14 @@ import { AUTH_COOKIE, createSessionToken, verifyPassword, hashPassword, isSecure
 import { z } from "zod";
 import * as db from "./db";
 
+function formatDbError(err: any) {
+  const messages = [err?.message, err?.cause?.message]
+    .filter((message): message is string => Boolean(message));
+  const code = err?.code ?? err?.cause?.code;
+  if (code) messages.push(`code: ${code}`);
+  return messages.join(" | ") || String(err);
+}
+
 export const appRouter = router({
   system: systemRouter,
 
@@ -22,7 +30,7 @@ export const appRouter = router({
         try {
           user = await db.getUserByEmail(input.email);
         } catch (err: any) {
-          const msg = (err?.message ?? String(err)) as string;
+          const msg = formatDbError(err);
           console.error("[Auth] DB error during login:", msg);
           throw new Error(`DB: ${msg}`);
         }
