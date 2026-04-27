@@ -26,6 +26,15 @@ function shouldUseSsl(databaseUrl: string) {
   }
 }
 
+function shouldDisablePreparedStatements(databaseUrl: string) {
+  try {
+    const parsed = new URL(databaseUrl);
+    return parsed.hostname.includes(".pooler.supabase.com") && parsed.port === "6543";
+  } catch {
+    return databaseUrl.includes(".pooler.supabase.com:6543");
+  }
+}
+
 export function getDb() {
   if (!_db) {
     const url = process.env.DATABASE_URL;
@@ -35,6 +44,7 @@ export function getDb() {
     _client = postgres(url, {
       max: 10,
       ssl: shouldUseSsl(url) ? "require" : false,
+      prepare: !shouldDisablePreparedStatements(url),
       connect_timeout: 10,
       idle_timeout: 30,
     });
