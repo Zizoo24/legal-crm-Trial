@@ -1,16 +1,10 @@
 import { config as loadDotenv } from "dotenv";
 import fs from "fs";
 
-// Diagnostic: show all env var keys present at container start
-console.log("[Env] Keys at startup:", Object.keys(process.env).sort().join(", "));
-console.log("[Env] DATABASE_URL raw:", process.env.DATABASE_URL ?? "(undefined)");
-console.log("[Env] JWT_SECRET raw:", process.env.JWT_SECRET ? "(set)" : "(undefined)");
-
 // Load any supplementary .env files (local dev, mounted volumes, etc.)
 const envCandidates = ["/assets/.env", "/assets/env", "/.env", ".env"];
 for (const p of envCandidates) {
   if (fs.existsSync(p)) {
-    console.log(`[Env] Loading dotenv from: ${p}`);
     loadDotenv({ path: p, override: false });
   }
 }
