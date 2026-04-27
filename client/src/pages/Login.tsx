@@ -19,11 +19,13 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 export default function Login() {
   const [, navigate] = useLocation();
+  const utils = trpc.useUtils();
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
   const loginMutation = trpc.auth.login.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      utils.auth.me.setData(undefined, { ...data.user, passwordHash: null });
       navigate("/dashboard");
     },
     onError: (err) => {
